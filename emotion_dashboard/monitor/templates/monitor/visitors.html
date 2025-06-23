@@ -1,0 +1,167 @@
+{% extends "monitor/base.html" %}
+
+{% block page_title %}Visitor Management{% endblock %}
+
+{% block content %}
+
+<div class="alert alert-info mb-4">
+    Showing data for: <strong>{{ branch_name }}</strong>
+</div>
+
+<div class="row mb-4">
+    <div class="col">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">Visitors</h6>
+                <form method="get" class="d-flex">
+                    <input type="text" name="search" class="form-control form-control-sm me-2" 
+                           placeholder="Search face ID" value="{{ search_query|default:'' }}">
+                    <button type="submit" class="btn btn-sm btn-primary">Search</button>
+                </form>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Face ID</th>
+                                <th>Last Seen</th>
+                                <th>Visits</th>
+                                <th>Last Emotion</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for visitor in visitors %}
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <div class="avatar me-2">{{ visitor.face_id|slice:":1"|upper }}</div>
+                                        <span>{{ visitor.face_id }}</span>
+                                    </div>
+                                </td>
+                                <td>{{ visitor.last_seen|date:"M d, Y H:i" }}</td>
+                                <td>{{ visitor.visit_count }}</td>
+                                <td>
+                                    <span class="badge badge-emotion 
+                                        {% if visitor.last_emotion == 'happy' %}badge-happy
+                                        {% elif visitor.last_emotion == 'neutral' %}badge-neutral
+                                        {% elif visitor.last_emotion == 'sad' %}badge-sad
+                                        {% elif visitor.last_emotion == 'angry' %}badge-angry
+                                        {% else %}badge-surprise{% endif %}">
+                                        {{ visitor.last_emotion|title }}
+                                    </span>
+                                </td>
+                                <td>
+                                        <a href="{% url 'visitor_detail' visitor.id %}" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-eye"></i> View
+                                    </a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center py-4">No visitors found</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% if visitors.has_other_pages %}
+            <div class="card-footer">
+                <nav aria-label="Page navigation">
+                    <ul class="pagination pagination-sm mb-0 justify-content-center">
+                        {% if visitors.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ visitors.previous_page_number }}{% if selected_emotion %}&emotion={{ selected_emotion }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}" aria-label="Previous">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+                        {% endif %}
+                        
+                        {% for i in visitors.paginator.page_range %}
+                            {% if visitors.number == i %}
+                            <li class="page-item active"><span class="page-link">{{ i }}</span></li>
+                            {% else %}
+                            <li class="page-item"><a class="page-link" href="?page={{ i }}{% if selected_emotion %}&emotion={{ selected_emotion }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">{{ i }}</a></li>
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if visitors.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ visitors.next_page_number }}{% if selected_emotion %}&emotion={{ selected_emotion }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}" aria-label="Next">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Filters</h6>
+            </div>
+            <div class="card-body">
+                <form method="get">
+                    <div class="mb-3">
+                        <label class="form-label">Emotion</label>
+                        <select name="emotion" class="form-select">
+                            <option value="">All Emotions</option>
+                            {% for emotion, count in emotion_counts.items %}
+                            <option value="{{ emotion }}" {% if selected_emotion == emotion %}selected{% endif %}>
+                                {{ emotion|title }} ({{ count }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Date Range</label>
+                        <div class="input-group mb-2">
+                            <input type="date" name="date_from" class="form-control" value="{{ date_from|default:'' }}">
+                            <span class="input-group-text">to</span>
+                            <input type="date" name="date_to" class="form-control" value="{{ date_to|default:'' }}">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Apply Filters</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block chart_scripts %}
+<script>
+    // Emotion Distribution Chart
+    const emotionCtx = document.getElementById('emotionChart').getContext('2d');
+    const emotionChart = new Chart(emotionCtx, {
+        type: 'pie',
+        data: {
+            labels: {{ emotion_counts.keys|safe }},
+            datasets: [{
+                data: {{ emotion_counts.values|safe }},
+                backgroundColor: [
+                    '#2ecc71', '#95a5a6', '#e74c3c', '#f39c12', '#3498db'
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

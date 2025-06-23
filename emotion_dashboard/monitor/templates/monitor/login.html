@@ -1,0 +1,433 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Emotion Analytics Dashboard - Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --primary-color: rgb(255, 136, 0);
+      --primary-dark: rgb(210, 110, 0);
+      --text-light: #f5f5f5;
+      --text-muted: #aaa;
+      --bg-dark: #111;
+      --bg-darker: #0a0a0a;
+      --border-radius: 12px;
+      --box-shadow: 0 12px 24px rgba(0,0,0,0.3);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+      background: var(--bg-dark);
+      color: var(--text-light);
+      line-height: 1.6;
+    }
+
+    #particles-js {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      background: var(--bg-darker);
+    }
+
+    .login-container {
+      width: 100%;
+      max-width: 420px;
+      padding: 0 20px;
+    }
+
+    .login-box {
+      background: rgba(20, 20, 20, 0.7);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--border-radius);
+      padding: 40px;
+      width: 100%;
+      box-shadow: var(--box-shadow);
+      animation: fadeIn 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      transform-origin: center;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px) scale(0.95); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .logo-container {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .logo {
+      height: 60px;
+      margin-bottom: 15px;
+      transition: transform 0.3s ease;
+    }
+
+    .logo:hover {
+      transform: scale(1.05);
+    }
+
+    .login-title {
+      font-size: 1.8rem;
+      font-weight: 600;
+      margin-bottom: 5px;
+      color: var(--text-light);
+      text-align: center;
+    }
+
+    .login-subtitle {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+      position: relative;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    .input-field {
+      position: relative;
+    }
+
+    .input-field i {
+      position: absolute;
+      left: 15px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+
+    form input {
+      width: 100%;
+      padding: 12px 15px 12px 45px;
+      border-radius: var(--border-radius);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      outline: none;
+      font-size: 1rem;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-light);
+      transition: all 0.3s ease;
+    }
+    
+    /* Specific style for password field */
+    #password {
+      padding-right: 45px; /* Increased right padding */
+    }
+
+    form input:focus {
+      border-color: var(--primary-color);
+      background: rgba(255, 255, 255, 0.1);
+      box-shadow: 0 0 0 3px rgba(255, 136, 0, 0.2);
+    }
+
+    form input::placeholder {
+      color: var(--text-muted);
+      opacity: 0.7;
+    }
+
+    .btn-login {
+      width: 100%;
+      padding: 14px;
+      background: var(--primary-color);
+      color: #000;
+      font-weight: 600;
+      font-size: 1rem;
+      border: none;
+      border-radius: var(--border-radius);
+      margin-top: 10px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .btn-login:hover {
+      background: var(--primary-dark);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(255, 136, 0, 0.3);
+    }
+
+    .btn-login:active {
+      transform: translateY(0);
+    }
+
+    .extra-links {
+      margin-top: 25px;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .extra-links a {
+      color: var(--primary-color);
+      text-decoration: none;
+      transition: color 0.3s ease;
+    }
+
+    .extra-links a:hover {
+      color: var(--text-light);
+      text-decoration: underline;
+    }
+
+    .error-message {
+      color: #ff6b6b;
+      font-size: 0.85rem;
+      margin-top: 5px;
+      display: none;
+    }
+
+    .form-group.error .error-message {
+      display: block;
+    }
+
+    .form-group.error input {
+      border-color: #ff6b6b;
+    }
+
+    .password-toggle {
+      position: absolute;
+      right: 15px; /* Position from right */
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 1rem;
+      z-index: 2; /* Ensure it's above other elements */
+    }
+
+    @media (max-width: 480px) {
+      .login-box {
+        padding: 30px 25px;
+      }
+
+      .login-title {
+        font-size: 1.5rem;
+      }
+
+      .logo {
+        height: 50px;
+      }
+    }
+
+    .theme-toggle {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--text-light);
+      font-size: 1.2rem;
+      transition: all 0.3s ease;
+    }
+
+    .theme-toggle:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <div id="particles-js"></div>
+
+  <button class="theme-toggle" id="themeToggle">
+    <i class="fas fa-moon"></i>
+  </button>
+
+  <div class="login-container">
+    <div class="login-box">
+      <div class="logo-container">
+        <img src="{% static 'images/fidelity_logo.png' %}" alt="Company Logo" class="logo">
+        <h1 class="login-title">Emotion Analytics</h1>
+        <p class="login-subtitle">Sign in to access your dashboard</p>
+      </div>
+
+      <form method="post" id="loginForm">
+        {% csrf_token %}
+        <div class="form-group" id="usernameGroup">
+          <label for="username">Username</label>
+          <div class="input-field">
+            <i class="fas fa-user"></i>
+            <input type="text" id="username" name="username" placeholder="Enter your username" required>
+          </div>
+          <div class="error-message" id="usernameError"></div>
+        </div>
+
+        <div class="form-group" id="passwordGroup">
+          <label for="password">Password</label>
+          <div class="input-field">
+            <i class="fas fa-lock"></i>
+             <input type="password" id="password" name="password" placeholder="Enter your password" required> <i class="fas fa-eye password-toggle" id="togglePassword"></i>
+            
+          </div>
+          <div class="error-message" id="passwordError"></div>
+        </div>
+
+        {% if error %}
+        <div class="form-group error">
+          <div class="error-message" style="display: block;">{{ error }}</div>
+        </div>
+        {% endif %}
+
+        <button type="submit" class="btn-login">
+          <i class="fas fa-sign-in-alt"></i> Login
+        </button>
+
+        <div class="extra-links">
+          <p>Forgot your password? <a href="#" id="forgotPassword">Contact administrator</a></p>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+  <script>
+    // Enhanced particles config
+    particlesJS("particles-js", {
+      "particles": {
+        "number": { "value": 100, "density": { "enable": true, "value_area": 800 } },
+        "color": { "value": ["#ffaa00", "#ff5500", "#ffffff"] },
+        "shape": { "type": "circle" },
+        "opacity": {
+          "value": 0.6,
+          "random": true,
+          "anim": {
+            "enable": true,
+            "speed": 0.8,
+            "opacity_min": 0.2,
+            "sync": false
+          }
+        },
+        "size": {
+          "value": 3.5,
+          "random": true,
+          "anim": {
+            "enable": true,
+            "speed": 4,
+            "size_min": 0.5,
+            "sync": false
+          }
+        },
+        "line_linked": {
+          "enable": true,
+          "distance": 130,
+          "color": "#ffaa00",
+          "opacity": 0.3,
+          "width": 1
+        },
+        "move": {
+          "enable": true,
+          "speed": 2.5,
+          "direction": "none",
+          "random": true,
+          "straight": false,
+          "out_mode": "out",
+          "bounce": false
+        }
+      },
+      "interactivity": {
+        "detect_on": "canvas",
+        "events": {
+          "onhover": { "enable": true, "mode": "repulse" },
+          "onclick": { "enable": true, "mode": "push" }
+        },
+        "modes": {
+          "repulse": { "distance": 100, "duration": 0.4 },
+          "push": { "particles_nb": 4 }
+        }
+      },
+      "retina_detect": true
+    });
+
+    // Toggle password visibility
+    document.getElementById('togglePassword').addEventListener('click', function () {
+      const passwordInput = document.getElementById('password');
+      const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+      passwordInput.setAttribute('type', type);
+      this.classList.toggle('fa-eye');
+      this.classList.toggle('fa-eye-slash');
+    });
+
+    // Form validation
+    const loginForm = document.getElementById('loginForm');
+    loginForm.addEventListener('submit', function (e) {
+      const username = document.getElementById('username');
+      const password = document.getElementById('password');
+      const usernameGroup = document.getElementById('usernameGroup');
+      const passwordGroup = document.getElementById('passwordGroup');
+      const usernameError = document.getElementById('usernameError');
+      const passwordError = document.getElementById('passwordError');
+
+      let isValid = true;
+
+      if (username.value.trim() === '') {
+        usernameGroup.classList.add('error');
+        usernameError.textContent = 'Username is required';
+        isValid = false;
+      } else {
+        usernameGroup.classList.remove('error');
+        usernameError.textContent = '';
+      }
+
+      if (password.value.trim() === '') {
+        passwordGroup.classList.add('error');
+        passwordError.textContent = 'Password is required';
+        isValid = false;
+      } else {
+        passwordGroup.classList.remove('error');
+        passwordError.textContent = '';
+      }
+
+      if (!isValid) e.preventDefault();
+    });
+
+    // Forgot password
+    document.getElementById('forgotPassword').addEventListener('click', function (e) {
+      e.preventDefault();
+      alert('Please contact your system administrator to reset your password.');
+    });
+
+    // Theme toggle
+    document.getElementById('themeToggle').addEventListener('click', function () {
+      document.body.classList.toggle('light-mode');
+      const icon = this.querySelector('i');
+      icon.classList.toggle('fa-moon');
+      icon.classList.toggle('fa-sun');
+    });
+  </script>
+</body>
+</html>

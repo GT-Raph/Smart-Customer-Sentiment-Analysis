@@ -1,0 +1,192 @@
+{% extends "monitor/base.html" %}
+
+{% block page_title %}{{ branch.name }} - Branch Details{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Branch Information</h6>
+            </div>
+            <div class="card-body">
+                <h5>{{ branch.name }}</h5>
+                <p class="text-muted mb-1">Code Prefix: {{ branch.code_prefix }}</p>
+                <p class="text-muted">Location: {{ branch.location }}</p>
+                
+                <div class="d-flex justify-content-between border-top pt-3 mt-3">
+                    <div class="text-center">
+                        <h4 class="mb-0">{{ total_emotions }}</h4>
+                        <small class="text-muted">Total Detections</small>
+                    </div>
+                    <div class="text-center">
+                        <h4 class="mb-0">{{ emotions|length }}</h4>
+                        <small class="text-muted">Emotions</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Emotion Distribution</h6>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="emotionChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Hourly Activity</h6>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="hourlyChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Positivity by Hour</h6>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="positivityChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">Recent Visits</h6>
+                <a href="#" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Face ID</th>
+                                <th>Emotion</th>
+                                <th>Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for hour in hourly_data|slice:":10" %}
+                            <tr>
+                                <td>{{ hour.face_id }}</td>
+                                <td>
+                                    <span class="badge badge-emotion 
+                                        {% if hour.emotion == 'happy' %}badge-happy
+                                        {% elif hour.emotion == 'neutral' %}badge-neutral
+                                        {% elif hour.emotion == 'sad' %}badge-sad
+                                        {% elif hour.emotion == 'angry' %}badge-angry
+                                        {% else %}badge-surprise{% endif %}">
+                                        {{ hour.emotion|title }}
+                                    </span>
+                                </td>
+                                <td>{{ hour.timestamp|date:"M d, Y H:i" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block chart_scripts %}
+<script>
+    // Emotion Distribution Chart
+    const emotionCtx = document.getElementById('emotionChart').getContext('2d');
+    const emotionChart = new Chart(emotionCtx, {
+        type: 'pie',
+        data: {
+            labels: {{ emotion_labels|safe }},
+            datasets: [{
+                data: {{ emotion_counts|safe }},
+                backgroundColor: [
+                    '#2ecc71', '#95a5a6', '#e74c3c', '#f39c12', '#3498db'
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                }
+            }
+        }
+    });
+    
+    // Hourly Activity Chart
+    const hourlyCtx = document.getElementById('hourlyChart').getContext('2d');
+    const hourlyChart = new Chart(hourlyCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ hourly_labels|safe }},
+            datasets: [{
+                label: 'Visits',
+                data: {{ hourly_visits|safe }},
+                backgroundColor: '#3498db',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+    
+    // Positivity Chart
+    const posCtx = document.getElementById('positivityChart').getContext('2d');
+    const posChart = new Chart(posCtx, {
+        type: 'line',
+        data: {
+            labels: {{ hourly_labels|safe }},
+            datasets: [{
+                label: 'Positivity Score',
+                data: {{ hourly_positivity|safe }},
+                borderColor: '#2ecc71',
+                backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                tension: 0.3,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    min: 0,
+                    max: 100
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

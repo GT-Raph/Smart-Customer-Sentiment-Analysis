@@ -1,0 +1,49 @@
+{% extends "monitor/base.html" %}
+
+{% block page_title %}Reports{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Generate Report</h6>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Report Type</label>
+                        <select name="report_type" class="form-select">
+                            <option value="summary">Summary Report</option>
+                            <option value="emotions">Emotion Analysis</option>
+                            <option value="visitors">Visitor Statistics</option>
+                            <option value="branch">Branch Performance</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Date Range</label>
+                        <div class="input-group mb-2">
+                            <input type="date" name="date_from" class="form-control">
+                            <span class="input-group-text">to</span>
+                            <input type="date" name="date_to" class="form-control">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Format</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="format" id="formatPdf" value="pdf" checked>
+                            <label class="form-check-label" for="formatPdf">PDF</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="format" id="formatCsv" value="csv">
+                            <label class="form-check-label" for="formatCsv">CSV</label>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Generate Report</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

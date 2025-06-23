@@ -1,0 +1,224 @@
+{% extends "monitor/base.html" %}
+
+{% block page_title %}Emotion Analytics{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">Emotion Trends Over Time</h6>
+                <div class="btn-group">
+                    <a href="?range=day" 
+                       class="btn btn-sm {% if time_range == 'day' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Day</a>
+                    <a href="?range=week" 
+                       class="btn btn-sm {% if time_range == 'week' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Week</a>
+                    <a href="?range=month" 
+                       class="btn btn-sm {% if time_range == 'month' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Month</a>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="chart-container" style="height: 400px;">
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if branch_comparison and request.user.is_superuser %}
+<div class="row mb-4">
+    <div class="col">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Branch Comparison</h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Branch</th>
+                                <th>Happy</th>
+                                <th>Neutral</th>
+                                <th>Negative</th>
+                                <th>Total Visits</th>
+                                <th>Positivity</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for branch in branch_comparison %}
+                            <tr>
+                                <td>{{ branch.name }}</td>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <div class="progress flex-grow-1 me-2" style="height: 20px;">
+                                            <div class="progress-bar bg-success" role="progressbar" 
+                                                 style="width: {{ branch.happy }}%" 
+                                                 aria-valuenow="{{ branch.happy }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                        </div>
+                                        <span>{{ branch.happy|floatformat:1 }}%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <div class="progress flex-grow-1 me-2" style="height: 20px;">
+                                            <div class="progress-bar bg-secondary" role="progressbar" 
+                                                 style="width: {{ branch.neutral }}%" 
+                                                 aria-valuenow="{{ branch.neutral }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                        </div>
+                                        <span>{{ branch.neutral|floatformat:1 }}%</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <div class="progress flex-grow-1 me-2" style="height: 20px;">
+                                            <div class="progress-bar bg-danger" role="progressbar" 
+                                                 style="width: {{ branch.negative }}%" 
+                                                 aria-valuenow="{{ branch.negative }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                        </div>
+                                        <span>{{ branch.negative|floatformat:1 }}%</span>
+                                    </div>
+                                </td>
+                                <td>{{ branch.total_visits }}</td>
+                                <td>
+                                    {% if branch.happy >= 60 %}
+                                    <span class="badge bg-success">High</span>
+                                    {% elif branch.happy >= 40 %}
+                                    <span class="badge bg-warning">Medium</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">Low</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">Visits by Hour</h6>
+                <span class="badge bg-info">Today</span>
+            </div>
+            <div class="card-body">
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="hourlyChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">Emotion Distribution</h6>
+                <span class="badge bg-info">Last 7 Days</span>
+            </div>
+            <div class="card-body">
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="distributionChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block chart_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    // Emotion Trend Chart (Line)
+    try {
+        const trendCtx = document.getElementById('trendChart').getContext('2d');
+        const trendChart = new Chart(trendCtx, {
+            type: 'line',
+            data: {
+                labels: {{ chart_data.labels|safe }},
+                datasets: [
+                    {% for dataset in chart_data.datasets %}
+                    {
+                        label: '{{ dataset.label }}',
+                        data: {{ dataset.data }},
+                        borderColor: '{{ dataset.borderColor }}',
+                        backgroundColor: '{{ dataset.backgroundColor }}',
+                        borderWidth: 3,
+                        pointRadius: 4,
+                        tension: 0.3,
+                        fill: true
+                    }{% if not forloop.last %},{% endif %}
+                    {% endfor %}
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    y: { beginAtZero: true },
+                    x: { }
+                }
+            }
+        });
+    } catch (error) {
+        console.error("Error creating trend chart:", error);
+    }
+    
+    // Hourly Visit Chart (Bar)
+    try {
+        const hourlyCtx = document.getElementById('hourlyChart').getContext('2d');
+        const hourlyChart = new Chart(hourlyCtx, {
+            type: 'bar',
+            data: {
+                labels: {{ hourly_labels|safe }},
+                datasets: [{
+                    label: 'Total Visits',
+                    data: {{ hourly_data }},
+                    backgroundColor: 'rgba(52, 152, 219, 0.7)'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+    } catch (error) {
+        console.error("Error creating hourly chart:", error);
+    }
+    
+    // Emotion Distribution Chart (Doughnut)
+    try {
+        const distCtx = document.getElementById('distributionChart').getContext('2d');
+        const distChart = new Chart(distCtx, {
+            type: 'doughnut',
+            data: {
+                labels: {{ dist_labels|safe }},
+                datasets: [{
+                    data: {{ dist_data }},
+                    backgroundColor: [
+                        '#2ecc71', '#95a5a6', '#e74c3c', '#f39c12', '#3498db'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+    } catch (error) {
+        console.error("Error creating distribution chart:", error);
+    }
+</script>
+{% endblock %}

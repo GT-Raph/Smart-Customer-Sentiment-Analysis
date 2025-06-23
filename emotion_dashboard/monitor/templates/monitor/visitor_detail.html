@@ -1,0 +1,115 @@
+{% extends "monitor/base.html" %}
+
+{% block page_title %}Visitor Details - {{ visitor.face_id }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Visitor Profile</h6>
+            </div>
+            <div class="card-body text-center">
+                <div class="avatar mx-auto mb-3" style="width: 100px; height: 100px; font-size: 2.5rem;">
+                    {{ visitor.face_id|slice:":1"|upper }}
+                </div>
+                <h5>{{ visitor.face_id }}</h5>
+                <p class="text-muted mb-1">First seen: {{ visitor.first_seen|date:"M d, Y" }}</p>
+                <p class="text-muted">Last seen: {{ visitor.last_seen|date:"M d, Y" }}</p>
+                
+                <div class="d-flex justify-content-between border-top pt-3 mt-3">
+                    <div class="text-center">
+                        <h4 class="mb-0">{{ visitor.visit_count }}</h4>
+                        <small class="text-muted">Visits</small>
+                    </div>
+                    <div class="text-center">
+                        <h4 class="mb-0">{{ emotion_dist.values|length }}</h4>
+                        <small class="text-muted">Emotions</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Emotion History</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Emotion</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in history %}
+                            <tr>
+                                <td>{{ entry.timestamp|date:"M d, Y H:i" }}</td>
+                                <td>
+                                    <span class="badge badge-emotion 
+                                        {% if entry.emotion == 'happy' %}badge-happy
+                                        {% elif entry.emotion == 'neutral' %}badge-neutral
+                                        {% elif entry.emotion == 'sad' %}badge-sad
+                                        {% elif entry.emotion == 'angry' %}badge-angry
+                                        {% else %}badge-surprise{% endif %}">
+                                        {{ entry.emotion|title }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Emotion Distribution</h6>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="distributionChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block chart_scripts %}
+<script>
+    // Emotion Distribution Chart
+    const distCtx = document.getElementById('distributionChart').getContext('2d');
+    const distChart = new Chart(distCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ emotion_dist.keys|safe }},
+            datasets: [{
+                label: 'Count',
+                data: {{ emotion_dist.values|safe }},
+                backgroundColor: [
+                    '#2ecc71', '#95a5a6', '#e74c3c', '#f39c12', '#3498db'
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

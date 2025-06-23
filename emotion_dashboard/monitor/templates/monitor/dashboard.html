@@ -1,0 +1,284 @@
+{% extends "monitor/base.html" %}
+
+{% block page_title %}Dashboard Overview{% endblock %}
+
+{% block content %}
+<style>
+    .badge-emotion {
+        font-size: 0.875em;
+        min-width: 75px;
+        text-align: center;
+        color: white;
+    }
+    .badge-happy { background-color: #2ecc71; }
+    .badge-neutral { background-color: #f1c40f; color: black; }
+    .badge-sad { background-color: #3498db; }
+    .badge-angry { background-color: #e74c3c; }
+    .badge-surprise { background-color: #9b59b6; }
+</style>
+
+<div class="row mb-3">
+    <div class="col">
+        <h6 class="text-muted">Viewing data for: <strong>{{ branch_name }}</strong></h6>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <!-- Summary Cards -->
+    <div class="col-md-3">
+        <div class="card summary-card primary h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Total Visitors</h6>
+                        <h3 class="mb-0">{{ total_visitors }}</h3>
+                    </div>
+                    <div class="bg-primary bg-opacity-10 p-3 rounded">
+                        <i class="bi bi-people-fill text-primary" style="font-size: 1.5rem;"></i>
+                    </div>
+                </div>
+                <p class="text-muted mb-0 mt-2">
+                    <span class="text-success fw-bold">+{{ visitor_growth }}%</span> from last week
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card summary-card {% if top_emotion.emotion == 'happy' %}success{% elif top_emotion.emotion == 'neutral' %}warning{% elif top_emotion.emotion == 'sad' %}primary{% elif top_emotion.emotion == 'angry' %}danger{% else %}info{% endif %} h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Top Emotion Today</h6>
+                        <h3 class="mb-0">{{ top_emotion.emotion|title }}</h3>
+                    </div>
+                    <div class="bg-{% if top_emotion.emotion == 'happy' %}success{% elif top_emotion.emotion == 'neutral' %}warning{% elif top_emotion.emotion == 'sad' %}primary{% elif top_emotion.emotion == 'angry' %}danger{% else %}info{% endif %} bg-opacity-10 p-3 rounded">
+                        <i class="bi bi-emoji-{% if top_emotion.emotion == 'happy' %}smile{% elif top_emotion.emotion == 'sad' %}sad{% elif top_emotion.emotion == 'angry' %}angry{% else %}neutral{% endif %} text-{% if top_emotion.emotion == 'happy' %}success{% elif top_emotion.emotion == 'neutral' %}warning{% elif top_emotion.emotion == 'sad' %}primary{% elif top_emotion.emotion == 'angry' %}danger{% else %}info{% endif %}" style="font-size: 1.5rem;"></i>
+                    </div>
+                </div>
+                <p class="text-muted mb-0 mt-2">{{ top_emotion.percentage }}% of all detections</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card summary-card warning h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Negative Emotions</h6>
+                        <h3 class="mb-0">{{ negative_percentage }}%</h3>
+                    </div>
+                    <div class="bg-warning bg-opacity-10 p-3 rounded">
+                        <i class="bi bi-emoji-frown-fill text-warning" style="font-size: 1.5rem;"></i>
+                    </div>
+                </div>
+                <p class="text-muted mb-0 mt-2">
+                    <span class="text-danger fw-bold">+{{ negative_growth }}%</span> from yesterday
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card summary-card danger h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Branch Activity</h6>
+                        <h3 class="mb-0">{{ activity_level }}</h3>
+                    </div>
+                    <div class="bg-danger bg-opacity-10 p-3 rounded">
+                        <i class="bi bi-activity text-danger" style="font-size: 1.5rem;"></i>
+                    </div>
+                </div>
+                <p class="text-muted mb-0 mt-2">Peak time: {{ peak_time }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Section -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">Emotion Trend (Last {{ trend_days }} Days)</h6>
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" 
+                            data-bs-toggle="dropdown" aria-expanded="false">
+                        {% if time_range == 'day' %}Today
+                        {% elif time_range == 'week' %}This Week
+                        {% elif time_range == 'month' %}This Month
+                        {% else %}Last {{ trend_days }} Days{% endif %}
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="?range=day">Today</a></li>
+                        <li><a class="dropdown-item" href="?range=week">This Week</a></li>
+                        <li><a class="dropdown-item" href="?range=month">This Month</a></li>
+                        <li><a class="dropdown-item" href="?range=14days">Last 14 Days</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="card-body">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h6 class="mb-0">Emotion Distribution</h6>
+            </div>
+            <div class="card-body">
+                {% if total_detections > 0 %}
+                <canvas id="emotionChart"></canvas>
+                {% else %}
+                <div class="alert alert-warning">No emotion data available</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">Hourly Emotion Activity</h6>
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" 
+                            data-bs-toggle="dropdown" aria-expanded="false">
+                        {% if hourly_range == 'yesterday' %}Yesterday
+                        {% else %}Today{% endif %}
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="?hourly=today">Today</a></li>
+                        <li><a class="dropdown-item" href="?hourly=yesterday">Yesterday</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if total_detections > 0 %}
+                <canvas id="activityChart"></canvas>
+                {% else %}
+                <div class="alert alert-warning">No hourly data available</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block chart_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Emotion Distribution Chart
+    {% if total_detections > 0 %}
+    const emotionCtx = document.getElementById('emotionChart').getContext('2d');
+    new Chart(emotionCtx, {
+        type: 'pie',
+        data: {
+            labels: {{ emotion_labels|safe }},
+            datasets: [{
+                data: {{ emotion_data|safe }},
+                backgroundColor: ['#2ecc71', '#f1c40f', '#3498db', '#e74c3c', '#9b59b6'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'right' },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => {
+                            const total = {{ total_detections }};
+                            const value = context.raw || 0;
+                            const percentage = ((value / total) * 100).toFixed(1);
+                            return `${context.label}: ${value} (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+    {% endif %}
+
+    // Emotion Trend Chart
+    const trendCtx = document.getElementById('trendChart').getContext('2d');
+    new Chart(trendCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ trend_labels|safe }},
+            datasets: {{ trend_datasets|safe }}
+        },
+        options: {
+            responsive: true,
+            scales: { 
+                x: { 
+                    stacked: true,
+                    title: { display: true, text: 'Date' }
+                },
+                y: { 
+                    stacked: true,
+                    title: { display: true, text: 'Number of Detections' },
+                    beginAtZero: true
+                }
+            },
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: { mode: 'index', intersect: false }
+            }
+        }
+    });
+
+    // Hourly Activity Chart
+    {% if total_detections > 0 %}
+    const activityCtx = document.getElementById('activityChart').getContext('2d');
+    new Chart(activityCtx, {
+        type: 'line',
+        data: {
+            labels: {{ hourly_labels|safe }},
+            datasets: [
+                { 
+                    label: 'Happy', 
+                    data: {{ hourly_happy|safe }}, 
+                    borderColor: '#2ecc71',
+                    tension: 0.3
+                },
+                { 
+                    label: 'Neutral', 
+                    data: {{ hourly_neutral|safe }}, 
+                    borderColor: '#f1c40f',
+                    tension: 0.3
+                },
+                { 
+                    label: 'Sad', 
+                    data: {{ hourly_sad|safe }}, 
+                    borderColor: '#3498db',
+                    tension: 0.3
+                },
+                { 
+                    label: 'Angry', 
+                    data: {{ hourly_angry|safe }}, 
+                    borderColor: '#e74c3c',
+                    tension: 0.3
+                },
+                { 
+                    label: 'Surprise', 
+                    data: {{ hourly_surprise|safe }}, 
+                    borderColor: '#9b59b6',
+                    tension: 0.3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'top' } },
+            scales: {
+                y: { beginAtZero: true, title: { text: 'Detections', display: true } },
+                x: { title: { text: 'Hour of Day', display: true } }
+            }
+        }
+    });
+    {% endif %}
+</script>
+{% endblock %}

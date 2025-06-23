@@ -1,0 +1,340 @@
+{% extends "monitor/base.html" %}
+{% load static %}
+{% load humanize %}
+
+{% block page_title %}Branch Overview{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    {% for branch in branches %}
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">{{ branch.name }}</h6>
+                <a href="{% url 'branch_detail' branch.id %}" class="btn btn-sm btn-outline-primary">View</a>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-3">
+                    <div>
+                        <h6 class="text-muted mb-1">Visitors</h6>
+                        <h3 class="mb-0">{{ branch.visitor_count }}</h3>
+                    </div>
+                    <div>
+                        <h6 class="text-muted mb-1">Top Emotion</h6>
+                        <h3 class="mb-0">
+                            <span class="badge 
+                                {% if branch.top_emotion == 'happy' %}bg-success
+                                {% elif branch.top_emotion == 'neutral' %}bg-secondary
+                                {% elif branch.top_emotion == 'sad' %}bg-danger
+                                {% elif branch.top_emotion == 'angry' %}bg-warning
+                                {% else %}bg-primary{% endif %}">
+                                {{ branch.top_emotion|title }}
+                            </span>
+                        </h3>
+                    </div>
+                </div>
+                
+                <h6 class="text-muted mb-2">Positivity Score</h6>
+                <div class="progress mb-3" style="height: 10px;">
+                    <div class="progress-bar 
+                        {% if branch.positivity_score >= 0.7 %}bg-success
+                        {% elif branch.positivity_score >= 0.4 %}bg-warning
+                        {% else %}bg-danger{% endif %}" 
+                        role="progressbar" 
+                        style="width: {{ branch.positivity_percent }}%"
+                        aria-valuenow="{{ branch.positivity_percent }}" 
+                        aria-valuemin="0" 
+                        aria-valuemax="100">
+                    </div>
+                </div>
+                
+                <h6 class="text-muted mb-2">Weekly Trend</h6>
+                <div class="chart-container" style="height: 100px;">
+                    <canvas id="trend{{ branch.id }}"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="container-fluid">
+    <!-- Debugging Section -->
+    <div class="alert alert-info d-print-block">
+        <h5>Chart Debug Information</h5>
+        <ul>
+            <li>Time Range: {{ debug_info.time_range }}</li>
+            <li>Days: {{ debug_info.days|join:", " }}</li>
+            <li>Branches: {{ debug_info.branch_count }}</li>
+            <li>Data Available: {{ debug_info.has_data|yesno:"Yes,No" }}</li>
+            <li>Datasets: {{ chart_datasets|length }}</li>
+        </ul>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">Branch Performance Comparison (Chart View)</h6>
+                    <div class="btn-group">
+                        <a href="?range=day" 
+                           class="btn btn-sm {% if time_range == 'day' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Day</a>
+                        <a href="?range=week" 
+                           class="btn btn-sm {% if time_range == 'week' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Week</a>
+                        <a href="?range=month" 
+                           class="btn btn-sm {% if time_range == 'month' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Month</a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container" style="height: 400px; position: relative;">
+                        <canvas id="comparisonChart"></canvas>
+                        <div id="noDataMessage" class="text-center" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none;">
+                            <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No Data Available</h5>
+                            <p class="text-muted">No visit records found for selected time range</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+{% endblock %}
+
+{% block chart_styles %}
+<style>
+    .chart-container {
+        position: relative;
+        width: 100%;
+        height: 400px;
+    }
+    .progress {
+        height: 10px;
+    }
+</style>
+
+{% endblock %}
+
+{% block chart_scripts %}
+<!-- Chart.js Libraries -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/moment@2.29.1/moment.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.0/dist/chartjs-adapter-moment.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('comparisonChart').getContext('2d');
+    
+    // Get data from Django context
+    const chartData = {
+        datasets: {{ chart_datasets|safe }}
+    };
+
+    new Chart(ctx, {
+        type: 'line',
+        data: chartData,
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'day',
+                        tooltipFormat: 'MMM D',
+                        displayFormats: {
+                            day: 'MMM D'
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Date'
+                    },
+                    grid: {
+                        display: false
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Number of Visits'
+                    },
+                    ticks: {
+                        precision: 0,
+                        stepSize: 1
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        boxWidth: 12,
+                        padding: 20
+                    }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        title: function(tooltipItems) {
+                            return moment(tooltipItems[0].parsed.x).format('MMM D, YYYY');
+                        }
+                    }
+                }
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            }
+        }
+    });
+});
+</script>
+
+
+<!-- Chart.js Libraries -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/moment@2.29.1/moment.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.0/dist/chartjs-adapter-moment.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('comparisonChart').getContext('2d');
+    const noDataMsg = document.getElementById('noDataMessage');
+    
+    // Get data from Django context
+    const chartData = {
+        datasets: {{ chart_datasets|safe }}
+    };
+
+    // Check if any dataset has data
+    let hasData = false;
+    for (const dataset of chartData.datasets) {
+        if (dataset.data.length > 0) {
+            hasData = true;
+            break;
+        }
+    }
+
+    if (!hasData) {
+        noDataMsg.style.display = 'block';
+        return;
+    }
+
+    // Register plugins
+    Chart.register(ChartDataLabels);
+
+    // Create chart
+    new Chart(ctx, {
+        type: 'line',
+        data: chartData,
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'day',
+                        tooltipFormat: 'MMM D, YYYY',
+                        displayFormats: {
+                            day: 'MMM D'
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Date',
+                        font: {
+                            size: 14,
+                            weight: 'bold'
+                        }
+                    },
+                    grid: {
+                        display: true,
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Number of Visits',
+                        font: {
+                            size: 14,
+                            weight: 'bold'
+                        }
+                    },
+                    ticks: {
+                        precision: 0,
+                        stepSize: 1,
+                        callback: function(value) {
+                            if (value % 1 === 0) {
+                                return value;
+                            }
+                        }
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        boxWidth: 12,
+                        padding: 20,
+                        font: {
+                            size: 12
+                        }
+                    }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                    padding: 10,
+                    titleFont: {
+                        size: 14
+                    },
+                    bodyFont: {
+                        size: 13
+                    },
+                    callbacks: {
+                        title: function(tooltipItems) {
+                            return moment(tooltipItems[0].parsed.x).format('MMM D, YYYY');
+                        },
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y} visits`;
+                        }
+                    }
+                },
+                datalabels: {
+                    display: false  // Disable by default, can enable for specific datasets
+                }
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            animation: {
+                duration: 1000,
+                easing: 'easeOutQuart'
+            },
+            elements: {
+                point: {
+                    radius: 4,
+                    hoverRadius: 6
+                },
+                line: {
+                    borderWidth: 3
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}
