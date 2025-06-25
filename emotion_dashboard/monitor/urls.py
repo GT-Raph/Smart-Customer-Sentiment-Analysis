@@ -1,5 +1,8 @@
 from django.urls import path
 from . import views
+from django.conf import settings
+from django.conf.urls.static import static
+import os
 
 urlpatterns = [
     # Authentication
@@ -14,6 +17,7 @@ urlpatterns = [
     # Visitors
     path('visitors/', views.visitors_view, name='visitors'),
     path('visitors/<int:visitor_id>/', views.visitor_detail, name='visitor_detail'),
+    path('face_images/<str:filename>/', views.serve_face_image, name='face_image'),
     
     # Visit History
     path('visits/', views.visit_history_view, name='visit_history'),
@@ -30,4 +34,11 @@ urlpatterns = [
     
     # Settings
     path('settings/', views.settings_view, name='settings'),
-]
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# Serve media files in development
+if settings.DEBUG:
+    urlpatterns += static(
+        settings.MEDIA_URL, 
+        document_root=os.path.join(settings.BASE_DIR, 'emotion_detection_system', 'known_faces')
+    )

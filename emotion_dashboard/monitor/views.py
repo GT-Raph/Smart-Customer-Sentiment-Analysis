@@ -1,14 +1,17 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.db.models import Count, Q, Max, Min, F, ExpressionWrapper, FloatField
+from django.db.models import Count, Q, Max, Min, F, ExpressionWrapper, FloatField, Subquery, OuterRef
 from django.db.models.functions import ExtractHour, TruncDate
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse, FileResponse, HttpResponseNotFound
 from django.core.paginator import Paginator
 from datetime import datetime, timedelta, date
 from django.utils import timezone
 from django.utils.timezone import get_default_timezone, make_aware as django_make_aware
+from django.conf import settings
+import os
 import csv
+import json
 from collections import defaultdict
 from .models import Visitor, VisitLog, Branch, UserProfile
 from django.db.models import Count, Q
@@ -224,59 +227,185 @@ def dashboard(request):
     return render(request, 'monitor/dashboard.html', context)
 
 @login_required
+def serve_face_image(request, filename):
+    file_path = os.path.join(
+        settings.BASE_DIR, 
+        'emotion_detection_system', 
+        'known_faces', 
+        filename
+    )
+    if os.path.exists(file_path):
+        return FileResponse(open(file_path, 'rb'))
+    return HttpResponseNotFound()
+
+# views.py
+@login_required
 def visitors_view(request):
     user_branch = request.user.branch
+    
+    # Base queryset
     base_qs = Visitor.objects.annotate(
         visit_count=Count('visitlog'),
-        last_seen=Max('visitlog__timestamp')
+        last_seen=Max('visitlog__timestamp'),
+        last_emotion=Subquery(
+            VisitLog.objects.filter(
+                visitor=OuterRef('pk')
+            ).order_by('-timestamp').values('emotion')[:1]
+        )
     ).order_by('-last_seen')
+    
     if user_branch:
         base_qs = base_qs.filter(visitlog__branch=user_branch).distinct()
-    date_from = make_aware(request.GET.get('date_from'))
-    date_to = make_aware(request.GET.get('date_to'), end_of_day=True)
+    
+    # Filtering
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+    search_query = request.GET.get('search')
+    emotion_filter = request.GET.get('emotion')
+    
     visitors = base_qs
+    
     if date_from:
-        visitors = visitors.filter(visitlog__timestamp__gte=date_from)
+        visitors = visitors.filter(visitlog__timestamp__gte=make_aware(date_from))
     if date_to:
-        visitors = visitors.filter(visitlog__timestamp__lte=date_to)
-    if emotion_filter := request.GET.get('emotion'):
+        visitors = visitors.filter(visitlog__timestamp__lte=make_aware(date_to, end_of_day=True))
+    if emotion_filter:
         visitors = visitors.filter(visitlog__emotion=emotion_filter)
-    if search_query := request.GET.get('search'):
+    if search_query:
         visitors = visitors.filter(Q(face_id__icontains=search_query))
+    
+    # Get known faces images
+    known_faces_dir = os.path.join(settings.MEDIA_ROOT, 'known_faces')
+    face_images = {}
+    
+    if os.path.exists(known_faces_dir):
+        for f in os.listdir(known_faces_dir):
+            if f.lower().endswith(('.jpg', '.jpeg', '.png')):
+                # Extract face_id from filename (format: "faceid_user_timestamp.jpg")
+                face_id = f.split('_user_')[0]
+                face_images[face_id] = os.path.join('known_faces', f)
+    
+    # Pagination
     paginator = Paginator(visitors, 25)
     page_obj = paginator.get_page(request.GET.get('page'))
+    
+    # Add image paths and initials to visitors
+    image_url = None
+    if os.path.exists(known_faces_dir):
+        for filename in os.listdir(known_faces_dir):
+            if filename.startswith(f"{visitor.face_id}_user_"):
+                image_url = os.path.join('known_faces', filename)
+                break
+    
+    for visitor in page_obj:
+        visitor.image_url = face_images.get(visitor.face_id)
+        visitor.initials = visitor.face_id[:1].upper() if visitor.face_id else '?'
+    
+    # Emotion counts for filter
     emotion_counts_qs = VisitLog.objects.all()
     if user_branch:
         emotion_counts_qs = emotion_counts_qs.filter(branch=user_branch)
-    emotion_counts = emotion_counts_qs.values('emotion').annotate(
+    
+    emotion_counts = dict(emotion_counts_qs.values_list('emotion').annotate(
         count=Count('emotion')
-    ).order_by('-count')
+    ).order_by('-count'))
+    
     context = {
-        'tab': 'visitors',
         'visitors': page_obj,
         'emotion_counts': emotion_counts,
-        'selected_emotion': request.GET.get('emotion'),
-        'date_from': request.GET.get('date_from'),
-        'date_to': request.GET.get('date_to'),
-        'search_query': request.GET.get('search'),
+        'selected_emotion': emotion_filter,
+        'date_from': date_from,
+        'date_to': date_to,
+        'search_query': search_query,
         'branch_name': user_branch.name if user_branch else "All Branches",
-        'nav_items': nav_items()
     }
+    
     return render(request, 'monitor/visitors.html', context)
 
 @login_required
 def visitor_detail(request, visitor_id):
-    visitor = Visitor.objects.prefetch_related('visitlog_set').get(pk=visitor_id)
+    visitor = get_object_or_404(Visitor.objects.prefetch_related('visitlog_set'), pk=visitor_id)
+    
+    # Get emotion distribution data
     emotion_dist = visitor.visitlog_set.values('emotion').annotate(
         count=Count('emotion')
     ).order_by('-count')
+    
+    # Convert to dictionary format for chart
+    emotion_dist_dict = {e['emotion'].title(): e['count'] for e in emotion_dist}
     visits = visitor.visitlog_set.order_by('-timestamp')
+
+    # Get profile image
+    known_faces_dir = os.path.join(settings.MEDIA_ROOT, 'known_faces')
+    image_url = None
+    if os.path.exists(known_faces_dir):
+        for filename in os.listdir(known_faces_dir):
+            if filename.startswith(f"{visitor.face_id}_user_"):
+                image_url = os.path.join('known_faces', filename)
+                break
+
+    # Prepare emotion distribution chart data
+    chart_labels = list(emotion_dist_dict.keys())
+    chart_values = list(emotion_dist_dict.values())
+    color_map = {
+        'Happy': '#2ecc71',
+        'Neutral': '#95a5a6',
+        'Sad': '#e74c3c',
+        'Angry': '#f39c12',
+        'Surprise': '#3498db'
+    }
+    background_colors = [color_map.get(label, '#cccccc') for label in chart_labels]
+
+    # Prepare emotion trend data for line chart
+    trend_qs = visitor.visitlog_set.values('timestamp__date', 'emotion').annotate(count=Count('id')).order_by('timestamp__date')
+    emotions = ['happy', 'neutral', 'sad', 'angry', 'surprise']
+    trend_data = defaultdict(lambda: {e: 0 for e in emotions})
+    dates = set()
+    
+    for entry in trend_qs:
+        date_obj = entry['timestamp__date']
+        if date_obj:
+            date_str = date_obj.strftime('%Y-%m-%d')
+            trend_data[date_str][entry['emotion']] = entry['count']
+            dates.add(date_str)
+    
+    sorted_dates = sorted(dates)
+    chart_labels_trend = sorted_dates
+    chart_datasets = []
+    color_map_trend = {
+        'happy': '#2ecc71',
+        'neutral': '#f1c40f',
+        'sad': '#3498db',
+        'angry': '#e74c3c',
+        'surprise': '#9b59b6'
+    }
+    
+    for emotion in emotions:
+        chart_datasets.append({
+            'label': emotion.title(),
+            'data': [trend_data[d][emotion] for d in chart_labels_trend],
+            'borderColor': color_map_trend[emotion],
+            'backgroundColor': color_map_trend[emotion] + '33',  # Add transparency
+            'tension': 0.3,
+            'fill': False
+        })
+
     context = {
         'tab': 'visitors',
         'visitor': visitor,
-        'emotion_dist': emotion_dist,
+        'image_url': image_url,
         'visits': visits,
-        'nav_items': nav_items()
+        'nav_items': nav_items(),
+        'history': visits,
+        
+        # Emotion distribution chart data
+        'chart_labels': json.dumps(chart_labels),
+        'chart_values': json.dumps(chart_values),
+        'chart_colors': json.dumps(background_colors),
+        
+        # Emotion trend chart data
+        'trend_labels': json.dumps(chart_labels_trend),
+        'trend_datasets': json.dumps(chart_datasets),
     }
     return render(request, 'monitor/visitor_detail.html', context)
 
