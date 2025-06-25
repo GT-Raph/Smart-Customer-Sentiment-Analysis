@@ -216,7 +216,7 @@ def dashboard(request):
         'time_range': time_range,
         'trend_days': trend_days,
         'hourly_range': hourly_range,
-        'branch_name': user_branch.name if user_branch else "All Branches",
+        'branch_name': user_branch.name if user_branch else "Your Branch",
         'top_emotion': top_emotion,
         'negative_percentage': negative_percentage,
         'negative_growth': negative_growth,
