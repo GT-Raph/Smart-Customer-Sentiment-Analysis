@@ -147,7 +147,7 @@ class VisitDetailAdmin(admin.ModelAdmin):
     image_preview.short_description = 'Image'
 
     def emotion_info(self, obj):
-        return obj.visit.emotion_summary()
+        return obj.visit.emotion_summary  # Remove the parentheses()
     emotion_info.short_description = 'Emotion'
 
     def timestamp_info(self, obj):

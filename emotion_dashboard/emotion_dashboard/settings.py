@@ -89,14 +89,15 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'monitor', 'static'),
+    os.path.join(BASE_DIR, 'static'),
+    os.path.join(BASE_DIR, 'emotion_detection_system/Process'),
 ]
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Media files (user uploaded content)
 MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-MEDIA_ROOT = os.path.join(BASE_DIR, 'emotion_detection_system', 'known_faces')
+# MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_ROOT = os.path.join(BASE_DIR.parent, 'emotion_detection_system')
 
 # Authentication
 AUTH_USER_MODEL = 'monitor.CustomUser'

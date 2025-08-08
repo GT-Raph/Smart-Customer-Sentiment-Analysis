@@ -1,327 +1,260 @@
 {% extends "monitor/base.html" %}
 {% load static %}
-{% block page_title %}Visitor Details - {{ visitor.face_id }}{% endblock %}
+{% load custom_filters %}
+
+{% block page_title %}Visitor Details - {{ visitor.name|default:visitor.face_id|default:"Unknown Visitor" }}{% endblock %}
 
 {% block extra_css %}
 <style>
-    :root {
-        --primary-color: #4361ee;
-        --secondary-color: #3f37c9;
-        --accent-color: #4895ef;
-        --success-color: #4cc9f0;
-        --light-bg: #f8f9fa;
-        --dark-text: #212529;
-        --card-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        --transition: all 0.3s ease;
-    }
-    
-    body {
-        background-color: #f0f2f5;
-        color: var(--dark-text);
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
-    
-    .card {
-        border: none;
-        border-radius: 12px;
-        box-shadow: var(--card-shadow);
-        transition: var(--transition);
-        overflow: hidden;
-        margin-bottom: 1.5rem;
-    }
-    
-    .card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 30px rgba(0,0,0,0.12);
-    }
-    
-    .card-header {
-        background: linear-gradient(120deg, var(--primary-color), var(--secondary-color));
-        color: white;
-        font-weight: 600;
-        padding: 1rem 1.5rem;
-        border-radius: 12px 12px 0 0 !important;
-        border: none;
-    }
-    
-    .avatar {
-        width: 120px;
-        height: 120px;
-        border-radius: 50%;
-        overflow: hidden;
-        margin: 0 auto 1.5rem;
-        border: 4px solid white;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        background: linear-gradient(45deg, var(--accent-color), var(--success-color));
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 3.5rem;
-        color: white;
-    }
-    
-    .avatar img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-    
-    .avatar div {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: linear-gradient(45deg, var(--accent-color), var(--success-color));
-        color: white;
-    }
-    
-    .stat-card {
-        background: white;
-        border-radius: 12px;
-        padding: 1.25rem;
-        text-align: center;
-        transition: var(--transition);
-    }
-    
-    .stat-card:hover {
-        transform: translateY(-3px);
-    }
-    
-    .stat-number {
-        font-size: 1.8rem;
-        font-weight: 700;
-        color: var(--primary-color);
-        margin-bottom: 0.25rem;
-    }
-    
-    .stat-label {
-        font-size: 0.9rem;
-        color: #6c757d;
-        font-weight: 500;
-    }
-    
-    .badge-emotion {
-        font-weight: 600;
-        padding: 0.5em 1em;
-        border-radius: 50px;
-        font-size: 0.85rem;
-    }
-    
-    .badge-happy { background: linear-gradient(120deg, #2ecc71, #1abc9c); }
-    .badge-neutral { background: linear-gradient(120deg, #95a5a6, #7f8c8d); }
-    .badge-sad { background: linear-gradient(120deg, #3498db, #2980b9); }
-    .badge-angry { background: linear-gradient(120deg, #e74c3c, #c0392b); }
-    .badge-surprise { background: linear-gradient(120deg, #9b59b6, #8e44ad); }
-    
-    .table-responsive {
-        border-radius: 12px;
-        overflow: hidden;
-    }
-    
-    .table {
-        margin-bottom: 0;
-    }
-    
-    .table thead th {
-        background: linear-gradient(120deg, var(--primary-color), var(--secondary-color));
-        color: white;
-        border: none;
-        font-weight: 600;
-    }
-    
-    .table-hover tbody tr:hover {
-        background-color: rgba(67, 97, 238, 0.05);
-    }
-    
-    .chart-container {
-        position: relative;
-        height: 300px;
-        width: 100%;
-    }
-    
-    .timeline {
-        position: relative;
-        padding-left: 30px;
-        margin-top: 1.5rem;
-    }
-    
-    .timeline:before {
-        content: '';
-        position: absolute;
-        left: 10px;
-        top: 0;
-        bottom: 0;
-        width: 2px;
-        background: linear-gradient(to bottom, var(--accent-color), var(--success-color));
-    }
-    
-    .timeline-item {
-        position: relative;
-        margin-bottom: 1.5rem;
-    }
-    
-    .timeline-item:before {
-        content: '';
-        position: absolute;
-        left: -30px;
-        top: 5px;
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        background: var(--primary-color);
-        border: 3px solid white;
-        box-shadow: 0 0 0 2px var(--primary-color);
-    }
-    
-    .timeline-content {
-        background: white;
-        padding: 1rem;
-        border-radius: 8px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-    }
-    
-    .visitor-name {
-        font-weight: 700;
-        color: var(--primary-color);
-        letter-spacing: -0.5px;
-    }
-    
-    .section-title {
-        font-weight: 700;
-        color: var(--secondary-color);
-        margin-bottom: 1.5rem;
-        position: relative;
-        padding-bottom: 0.5rem;
-    }
-    
-    .section-title:after {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        width: 60px;
-        height: 3px;
-        background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
-        border-radius: 3px;
-    }
+:root {
+    --primary-color: #4361ee;
+    --secondary-color: #3f37c9;
+    --accent-color: #4895ef;
+    --success-color: #4cc9f0;
+    --light-bg: #f8f9fa;
+    --dark-text: #1f2937;
+    --soft-white: #ffffffcc;
+    --glass-bg: rgba(255, 255, 255, 0.75);
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    --transition: all 0.3s ease;
+}
+
+body {
+    background: linear-gradient(145deg, #eef2f7, #dbe2ef);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--dark-text);
+}
+
+.card {
+    border: none;
+    border-radius: 16px;
+    background: var(--glass-bg);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(12px);
+    transition: var(--transition);
+    overflow: hidden;
+}
+
+.card-header {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    color: white;
+    font-weight: 600;
+    padding: 1rem 1.5rem;
+    border-radius: 16px 16px 0 0 !important;
+}
+
+.avatar {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    margin: 0 auto 1.5rem;
+    border: 4px solid white;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+    background: linear-gradient(135deg, var(--accent-color), var(--success-color));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
+.avatar-initials {
+    font-size: 3rem;
+    color: white;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.visitor-name {
+    font-weight: 700;
+    font-size: 1.4rem;
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+}
+
+.visitor-stats {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+
+.stat-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.25rem 1rem;
+    text-align: center;
+    box-shadow: var(--shadow);
+    min-width: 110px;
+}
+
+.stat-number {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.badge-emotion {
+    font-weight: 600;
+    padding: 0.4em 1em;
+    border-radius: 50px;
+    color: white;
+    text-transform: capitalize;
+    font-size: 0.85rem;
+}
+
+.badge-happy { background: linear-gradient(135deg, #27ae60, #2ecc71); }
+.badge-neutral { background: linear-gradient(135deg, #7f8c8d, #95a5a6); }
+.badge-sad { background: linear-gradient(135deg, #2980b9, #3498db); }
+.badge-angry { background: linear-gradient(135deg, #c0392b, #e74c3c); }
+.badge-surprise { background: linear-gradient(135deg, #8e44ad, #9b59b6); }
+.badge-fear { background: linear-gradient(135deg, #d35400, #f39c12); }
+
+.section-title {
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--secondary-color);
+    margin-bottom: 1rem;
+}
+
+.progress-container {
+    margin-bottom: 1.25rem;
+}
+
+.progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    margin-bottom: 0.35rem;
+    font-weight: 500;
+}
+
+.emotion-progress {
+    height: 10px;
+    border-radius: 6px;
+    background-color: #e9ecef;
+}
+
+.progress-bar {
+    border-radius: 6px;
+}
+
+.timeline {
+    position: relative;
+    padding-left: 30px;
+    margin-top: 1.5rem;
+}
+
+.timeline:before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--accent-color), var(--success-color));
+}
+
+.timeline-item {
+    position: relative;
+    margin-bottom: 1.5rem;
+}
+
+.timeline-item:before {
+    content: '';
+    position: absolute;
+    left: -30px;
+    top: 5px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--primary-color);
+    border: 3px solid white;
+    box-shadow: 0 0 0 2px var(--primary-color);
+}
+
+.timeline-content {
+    background: white;
+    padding: 1rem;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+    font-size: 0.95rem;
+}
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4">
-    <div class="row mb-4">
+    <div class="row">
+        <!-- Left Column -->
         <div class="col-lg-4">
-            <div class="card">
+            <!-- Visitor Profile Card -->
+            <div class="card mb-4">
                 <div class="card-header">
                     <h5 class="mb-0">Visitor Profile</h5>
                 </div>
                 <div class="card-body text-center">
                     <div class="avatar">
                         {% if image_url %}
-                            <img src="{% static image_url %}" alt="{{ visitor.face_id }}">
-                        {% else %}
-                            <div>
-                                <span>{{ visitor.face_id|slice:":1"|upper }}</span>
-                            </div>
+                            <img src="{{ image_url }}" alt="{{ visitor.name|default:visitor.face_id|default:'Visitor' }}" 
+                                 onerror="this.style.display='none'; document.getElementById('avatar-initials').style.display='flex'">
                         {% endif %}
+                        <div id="avatar-initials" class="avatar-initials" {% if image_url %}style="display:none"{% endif %}>
+                            {{ visitor.name|default:visitor.face_id|default:"?"|slice:":1"|upper }}
+                        </div>
                     </div>
                     
-                    <h3 class="visitor-name">{{ visitor.face_id }}</h3>
+                    <h3 class="visitor-name mb-3">{{ visitor.name|default:visitor.face_id|default:"Unknown Visitor" }}</h3>
                     
-                    <div class="d-flex justify-content-center gap-3 mb-3">
-                        <div class="text-center">
-                            <p class="text-muted mb-1">First seen</p>
-                            <p class="fw-semibold">{{ visitor.first_seen|date:"M d, Y" }}</p>
+                    <div class="d-flex justify-content-around mb-3">
+                        <div>
+                            <small class="text-muted d-block">First seen</small>
+                            <strong>{{ first_seen|date:"M d, Y"|default:"Never" }}</strong>
                         </div>
                         <div class="vr"></div>
-                        <div class="text-center">
-                            <p class="text-muted mb-1">Last seen</p>
-                            <p class="fw-semibold">{{ visitor.last_seen|date:"M d, Y" }}</p>
+                        <div>
+                            <small class="text-muted d-block">Last seen</small>
+                            <strong>{{ last_seen|date:"M d, Y"|default:"Never" }}</strong>
                         </div>
                     </div>
                     
-                    <div class="d-flex justify-content-center gap-4 mt-4">
+                    <div class="visitor-stats">
                         <div class="stat-card">
-                            <div class="stat-number">{{ visitor.visit_count }}</div>
-                            <div class="stat-label">Total Visits</div>
+                            <div class="stat-number">{{ total_visits }}</div>
+                            <small class="text-muted">Total Visits</small>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-number">{{ chart_labels|length }}</div>
-                            <div class="stat-label">Emotions Detected</div>
+                            <div class="stat-number">{{ emotion_counts|length }}</div>
+                            <small class="text-muted">Emotions</small>
                         </div>
                     </div>
                 </div>
             </div>
             
-            <div class="card mt-4">
+            <!-- Emotion Distribution Card -->
+            <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">Emotion Distribution</h5>
                 </div>
                 <div class="card-body">
-                    <div class="chart-container">
+                    <div class="chart-container" style="height: 300px;">
                         <canvas id="distributionChart"></canvas>
                     </div>
                 </div>
             </div>
         </div>
         
+        <!-- Right Column -->
         <div class="col-lg-8">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Emotion History</h5>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle">
-                            <thead>
-                                <tr>
-                                    <th>Timestamp</th>
-                                    <th>Emotion</th>
-                                    <th>Confidence</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for entry in history %}
-                                <tr>
-                                    <td>{{ entry.timestamp|date:"M d, Y H:i" }}</td>
-                                    <td>
-                                        <span class="badge badge-emotion 
-                                            {% if entry.emotion == 'happy' %}badge-happy
-                                            {% elif entry.emotion == 'neutral' %}badge-neutral
-                                            {% elif entry.emotion == 'sad' %}badge-sad
-                                            {% elif entry.emotion == 'angry' %}badge-angry
-                                            {% else %}badge-surprise{% endif %}">
-                                            {{ entry.emotion|title }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <div class="progress" style="height: 8px;">
-                                            <div class="progress-bar 
-                                                {% if entry.emotion == 'happy' %}bg-success
-                                                {% elif entry.emotion == 'neutral' %}bg-secondary
-                                                {% elif entry.emotion == 'sad' %}bg-info
-                                                {% elif entry.emotion == 'angry' %}bg-danger
-                                                {% else %}bg-warning{% endif %}" 
-                                                role="progressbar" 
-                                                style="width: {% widthratio entry.confidence 1 100 %}%;"
-                                                aria-valuenow="{% widthratio entry.confidence 1 100 %}" 
-                                                aria-valuemin="0" 
-                                                aria-valuemax="100">
-                                            </div>
-                                        </div>
-                                        <small class="text-muted">{% widthratio entry.confidence 1 100 %}%</small>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="row mt-4">
-                <div class="col-md-6">
+            <!-- Insights Cards -->
+            <div class="row">
+                <div class="col-md-6 mb-4">
                     <div class="card h-100">
                         <div class="card-header">
                             <h5 class="mb-0">Emotion Insights</h5>
@@ -329,43 +262,59 @@
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-center mb-3">
                                 <h6 class="section-title">Most Frequent Emotion</h6>
-                                <span class="badge badge-happy">Happy</span>
+                                <span class="badge badge-emotion badge-{{ most_frequent_emotion|lower }}">{{ most_frequent_emotion }}</span>
                             </div>
                             
                             <div class="d-flex justify-content-between mb-4">
                                 <div>
-                                    <h5 class="mb-0">78%</h5>
-                                    <small class="text-muted">Positive Emotions</small>
+                                    <h5 class="mb-0">{{ positive_percent }}%</h5>
+                                    <small class="text-muted">Positive</small>
                                 </div>
                                 <div>
-                                    <h5 class="mb-0">22%</h5>
-                                    <small class="text-muted">Negative Emotions</small>
+                                    <h5 class="mb-0">{{ negative_percent }}%</h5>
+                                    <small class="text-muted">Negative</small>
                                 </div>
                             </div>
                             
-                            <div class="mt-4">
-                                <h6 class="section-title">Recent Activity</h6>
-                                <div class="timeline">
-                                    <div class="timeline-item">
-                                        <div class="timeline-content">
-                                            <div class="d-flex justify-content-between">
-                                                <strong>Happy</strong>
-                                                <small class="text-muted">2 hours ago</small>
-                                            </div>
-                                            <p class="mb-0">Visitor appeared satisfied</p>
-                                        </div>
+                            <!-- Emotion Breakdown -->
+                            <div class="mb-4">
+                                <h6 class="section-title">Emotion Breakdown</h6>
+                                {% for emotion, count in emotion_counts.items %}
+                                <div class="progress-container">
+                                    <div class="progress-label">
+                                        <span>{{ emotion }}</span>
+                                        <span>{{ count }} ({{ emotion_percentages|get_item:emotion }}%)</span>
                                     </div>
-                                    <div class="timeline-item">
-                                        <div class="timeline-content">
-                                            <div class="d-flex justify-content-between">
-                                                <strong>Neutral</strong>
-                                                <small class="text-muted">Yesterday</small>
-                                            </div>
-                                            <p class="mb-0">Standard interaction</p>
-                                        </div>
+                                    <div class="progress emotion-progress">
+                                        <div class="progress-bar bg-{{ emotion|lower }}" 
+                                             role="progressbar" 
+                                             style="width: {{ emotion_percentages|get_item:emotion }}%" 
+                                             aria-valuenow="{{ emotion_percentages|get_item:emotion }}" 
+                                             aria-valuemin="0" 
+                                             aria-valuemax="100"></div>
                                     </div>
                                 </div>
+                                {% endfor %}
                             </div>
+                            
+                            {% comment %} <div class="mt-4">
+                                <h6 class="section-title">Recent Activity</h6>
+                                <div class="timeline">
+                                    {% for visit in recent_activity %}
+                                    <div class="timeline-item">
+                                        <div class="timeline-content">
+                                            <div class="d-flex justify-content-between">
+                                                <strong>{{ visit.emotion }}</strong>
+                                                <small class="text-muted">{{ visit.timestamp|timesince }} ago</small>
+                                            </div>
+                                            <p class="mb-0">At {{ visit.branch.name }}</p>
+                                        </div>
+                                    </div>
+                                    {% empty %}
+                                    <p>No recent activity</p>
+                                    {% endfor %}
+                                </div>
+                            </div> {% endcomment %}
                         </div>
                     </div>
                 </div>
@@ -382,7 +331,7 @@
                                 </div>
                                 <div>
                                     <h6 class="mb-0">First Visit</h6>
-                                    <p class="mb-0 text-muted">{{ visitor.first_seen|date:"M d, Y" }}</p>
+                                    <p class="mb-0 text-muted">{{ first_seen|date:"M d, Y H:i"|default:"Not recorded" }}</p>
                                 </div>
                             </div>
                             
@@ -392,7 +341,13 @@
                                 </div>
                                 <div>
                                     <h6 class="mb-0">Visit Frequency</h6>
-                                    <p class="mb-0 text-muted">Every 3 days on average</p>
+                                    <p class="mb-0 text-muted">
+                                        {% if visit_frequency %}
+                                            Every {{ visit_frequency.days }} days, {{ visit_frequency.seconds|divisibleby:3600|default:0 }} hours
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </p>
                                 </div>
                             </div>
                             
@@ -402,19 +357,30 @@
                                 </div>
                                 <div>
                                     <h6 class="mb-0">Average Duration</h6>
-                                    <p class="mb-0 text-muted">42 minutes per visit</p>
+                                    <p class="mb-0 text-muted">
+                                        {{ average_duration|default:"N/A" }}
+                                    </p>
                                 </div>
                             </div>
                             
-                            <div class="d-flex align-items-center">
-                                <div class="bg-warning text-white rounded-circle p-2 me-3">
-                                    <i class="bi bi-emoji-smile"></i>
+                            {% comment %} <div class="mt-4">
+                                <h6 class="section-title">Visit Timeline</h6>
+                                <div class="timeline">
+                                    {% for visit in timeline %}
+                                    <div class="timeline-item">
+                                        <div class="timeline-content">
+                                            <div class="d-flex justify-content-between">
+                                                <span class="badge badge-emotion badge-{{ visit.emotion|lower }}">{{ visit.emotion }}</span>
+                                                <small class="text-muted">{{ visit.timestamp|date:"M d, Y H:i" }}</small>
+                                            </div>
+                                            <p class="mb-0 mt-2">At {{ visit.branch }}</p>
+                                        </div>
+                                    </div>
+                                    {% empty %}
+                                    <p>No visits recorded</p>
+                                    {% endfor %}
                                 </div>
-                                <div>
-                                    <h6 class="mb-0">Emotion Stability</h6>
-                                    <p class="mb-0 text-muted">Consistently positive</p>
-                                </div>
-                            </div>
+                            </div> {% endcomment %}
                         </div>
                     </div>
                 </div>
@@ -428,68 +394,37 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     // Emotion Distribution Chart
-    const distCtx = document.getElementById('distributionChart').getContext('2d');
-    const distChart = new Chart(distCtx, {
-        type: 'doughnut',
-        data: {
-            labels: {{ chart_labels|safe }},
-            datasets: [{
-                data: {{ chart_values|safe }},
-                backgroundColor: {{ chart_colors|safe }},
-                borderWidth: 0,
-                hoverOffset: 15
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: '70%',
-            plugins: {
-                legend: {
-                    position: 'right',
-                    labels: {
-                        boxWidth: 15,
-                        padding: 20,
-                        font: {
-                            size: 12,
-                            weight: 600
+    document.addEventListener('DOMContentLoaded', function() {
+        const ctx = document.getElementById('distributionChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: {{ chart_labels|safe }},
+                datasets: [{
+                    data: {{ chart_values|safe }},
+                    backgroundColor: {{ chart_colors|safe }},
+                    borderWidth: 0,
+                    hoverOffset: 15
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            boxWidth: 15,
+                            padding: 20,
+                            font: {
+                                size: 12,
+                                weight: 600
+                            }
                         }
                     }
                 },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return `${context.label}: ${context.parsed} times`;
-                        }
-                    }
-                }
+                cutout: '70%'
             }
-        }
-    });
-    
-    // Add animations to stats cards
-    document.querySelectorAll('.stat-card').forEach(card => {
-        card.addEventListener('mouseenter', function() {
-            const number = this.querySelector('.stat-number');
-            number.style.color = '#e63946';
-            number.style.transition = 'color 0.3s ease';
-        });
-        
-        card.addEventListener('mouseleave', function() {
-            const number = this.querySelector('.stat-number');
-            number.style.color = '#4361ee';
-        });
-    });
-    
-    // Add hover effect to emotion badges
-    document.querySelectorAll('.badge-emotion').forEach(badge => {
-        badge.addEventListener('mouseenter', function() {
-            this.style.transform = 'scale(1.05)';
-            this.style.transition = 'transform 0.2s ease';
-        });
-        
-        badge.addEventListener('mouseleave', function() {
-            this.style.transform = 'scale(1)';
         });
     });
 </script>

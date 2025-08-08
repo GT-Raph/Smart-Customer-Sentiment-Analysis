@@ -12,6 +12,7 @@ from django.conf import settings
 import os
 import csv
 import json
+from pathlib import Path
 from collections import defaultdict
 from .models import Visitor, VisitLog, Branch, UserProfile
 from django.db.models import Count, Q
@@ -274,31 +275,30 @@ def visitors_view(request):
     if search_query:
         visitors = visitors.filter(Q(face_id__icontains=search_query))
     
-    # Get known faces images
-    known_faces_dir = os.path.join(settings.MEDIA_ROOT, 'known_faces')
+    # Get process faces images from the Process directory
+    process_faces_dir = os.path.join(settings.BASE_DIR, 'emotion_detection_system/Process')
     face_images = {}
     
-    if os.path.exists(known_faces_dir):
-        for f in os.listdir(known_faces_dir):
-            if f.lower().endswith(('.jpg', '.jpeg', '.png')):
-                # Extract face_id from filename (format: "faceid_user_timestamp.jpg")
-                face_id = f.split('_user_')[0]
-                face_images[face_id] = os.path.join('known_faces', f)
+    if os.path.exists(process_faces_dir):
+        for root, dirs, files in os.walk(process_faces_dir):
+            for f in files:
+                if f.lower().endswith(('.jpg', '.jpeg', '.png')):
+                    # Extract face_id from filename (format: "faceid_user_timestamp.jpg")
+                    face_id = f.split('_user_')[0]
+                    # Store relative path from the project root
+                    rel_path = os.path.relpath(os.path.join(root, f), settings.BASE_DIR)
+                    face_images[face_id] = os.path.join(settings.STATIC_URL, rel_path)
     
     # Pagination
     paginator = Paginator(visitors, 25)
     page_obj = paginator.get_page(request.GET.get('page'))
     
     # Add image paths and initials to visitors
-    image_url = None
-    if os.path.exists(known_faces_dir):
-        for filename in os.listdir(known_faces_dir):
-            if filename.startswith(f"{visitor.face_id}_user_"):
-                image_url = os.path.join('known_faces', filename)
-                break
-    
     for visitor in page_obj:
-        visitor.image_url = face_images.get(visitor.face_id)
+        # Find the most recent image for this visitor
+        visitor.image_url = None
+        if visitor.face_id in face_images:
+            visitor.image_url = face_images[visitor.face_id]
         visitor.initials = visitor.face_id[:1].upper() if visitor.face_id else '?'
     
     # Emotion counts for filter
@@ -323,28 +323,113 @@ def visitors_view(request):
     return render(request, 'monitor/visitors.html', context)
 
 @login_required
+def visitor_analytics(request, face_id):
+    visitor = get_object_or_404(Visitor, face_id=face_id)
+    visit_logs = VisitLog.objects.filter(visitor=visitor).order_by('timestamp')
+    
+    analytics = {
+        'visitor': visitor,
+        'first_seen': "Never",
+        'last_seen': "Never",
+        'positive_percent': 0,
+        'negative_percent': 0,
+        'recent_activity': [],
+        'timeline': [],
+        'visit_frequency': "N/A",
+        'average_duration': "N/A",
+        'total_visits': 0,
+    }
+    
+    if visit_logs.exists():
+        first_seen = visit_logs.first().timestamp
+        last_seen = visit_logs.last().timestamp
+        
+        # Calculate visit frequency and duration
+        time_diffs = []
+        prev_time = first_seen
+        for visit in visit_logs[1:]:
+            time_diffs.append((visit.timestamp - prev_time).total_seconds())
+            prev_time = visit.timestamp
+        
+        if time_diffs:
+            avg_frequency_seconds = sum(time_diffs) / len(time_diffs)
+            avg_frequency = timedelta(seconds=avg_frequency_seconds)
+            avg_duration = timedelta(seconds=sum(time_diffs) / len(time_diffs))
+            
+            analytics['visit_frequency'] = f"Every {avg_frequency.days} days, {avg_frequency.seconds//3600} hours"
+            analytics['average_duration'] = f"{avg_duration.seconds//3600} hours, {(avg_duration.seconds//60)%60} minutes"
+        
+        # Emotion analysis
+        total_visits = visit_logs.count()
+        positive_emotions = visit_logs.filter(emotion__in=['happy', 'surprise']).count()
+        negative_emotions = visit_logs.filter(emotion__in=['angry', 'fear', 'sad']).count()
+        
+        positive_percent = round((positive_emotions / total_visits) * 100) if total_visits else 0
+        negative_percent = round((negative_emotions / total_visits) * 100) if total_visits else 0
+        
+        # Recent activity (last 5 visits)
+        recent_activity = visit_logs.order_by('-timestamp')[:5]
+        
+        # Timeline of visits
+        timeline = [
+            {
+                'date': visit.timestamp.date(),
+                'time': visit.timestamp.time(),
+                'emotion': visit.emotion,
+                'branch': visit.branch.name
+            }
+            for visit in visit_logs
+        ]
+        
+        analytics.update({
+            'first_seen': first_seen,
+            'last_seen': last_seen,
+            'positive_percent': positive_percent,
+            'negative_percent': negative_percent,
+            'recent_activity': recent_activity,
+            'timeline': timeline,
+            'total_visits': total_visits,
+        })
+    
+    return render(request, 'monitor/visitor_detail.html', analytics)
+
+
+@login_required
 def visitor_detail(request, visitor_id):
+    from collections import defaultdict
+    import json
+    from django.db.models import Count
+    from django.shortcuts import get_object_or_404, render
+    from .models import Visitor  # adjust as needed
+
     visitor = get_object_or_404(Visitor.objects.prefetch_related('visitlog_set'), pk=visitor_id)
     
-    # Get emotion distribution data
-    emotion_dist = visitor.visitlog_set.values('emotion').annotate(
-        count=Count('emotion')
-    ).order_by('-count')
-    
-    # Convert to dictionary format for chart
+    # Emotion distribution
+    emotion_dist = visitor.visitlog_set.values('emotion').annotate(count=Count('emotion')).order_by('-count')
     emotion_dist_dict = {e['emotion'].title(): e['count'] for e in emotion_dist}
     visits = visitor.visitlog_set.order_by('-timestamp')
 
-    # Get profile image
-    known_faces_dir = os.path.join(settings.MEDIA_ROOT, 'known_faces')
+    # --- Image Lookup Start ---
     image_url = None
-    if os.path.exists(known_faces_dir):
+
+    # 1. Check known_faces
+    known_faces_dir = Path(settings.MEDIA_ROOT) / 'known_faces'
+    if known_faces_dir.exists():
         for filename in os.listdir(known_faces_dir):
             if filename.startswith(f"{visitor.face_id}_user_"):
-                image_url = os.path.join('known_faces', filename)
+                image_url = f"/media/known_faces/{filename}"
                 break
 
-    # Prepare emotion distribution chart data
+    # 2. If not found, search in Process (recursively)
+    if not image_url:
+        process_dir = Path(settings.BASE_DIR) / 'emotion_detection_system' / 'Process'
+        for path in process_dir.rglob(f"*{visitor.face_id}*.jpg"):
+            rel_path = path.relative_to(Path(settings.BASE_DIR))
+            image_url = f"/{rel_path.as_posix()}"
+            break
+    # --- Image Lookup End ---
+
+    # Emotion chart setup
     chart_labels = list(emotion_dist_dict.keys())
     chart_values = list(emotion_dist_dict.values())
     color_map = {
@@ -356,19 +441,19 @@ def visitor_detail(request, visitor_id):
     }
     background_colors = [color_map.get(label, '#cccccc') for label in chart_labels]
 
-    # Prepare emotion trend data for line chart
+    # Emotion trend data
     trend_qs = visitor.visitlog_set.values('timestamp__date', 'emotion').annotate(count=Count('id')).order_by('timestamp__date')
     emotions = ['happy', 'neutral', 'sad', 'angry', 'surprise']
     trend_data = defaultdict(lambda: {e: 0 for e in emotions})
     dates = set()
-    
+
     for entry in trend_qs:
         date_obj = entry['timestamp__date']
         if date_obj:
             date_str = date_obj.strftime('%Y-%m-%d')
             trend_data[date_str][entry['emotion']] = entry['count']
             dates.add(date_str)
-    
+
     sorted_dates = sorted(dates)
     chart_labels_trend = sorted_dates
     chart_datasets = []
@@ -379,35 +464,69 @@ def visitor_detail(request, visitor_id):
         'angry': '#e74c3c',
         'surprise': '#9b59b6'
     }
-    
+
     for emotion in emotions:
         chart_datasets.append({
             'label': emotion.title(),
             'data': [trend_data[d][emotion] for d in chart_labels_trend],
             'borderColor': color_map_trend[emotion],
-            'backgroundColor': color_map_trend[emotion] + '33',  # Add transparency
+            'backgroundColor': color_map_trend[emotion] + '33',
             'tension': 0.3,
             'fill': False
         })
 
+    # Helper to calculate average duration between visits
+    def average_duration(visits_qs):
+        from datetime import timedelta
+        timestamps = list(visits_qs.values_list('timestamp', flat=True).order_by('timestamp'))
+        if len(timestamps) < 2:
+            return "N/A"
+        durations = [
+            (timestamps[i] - timestamps[i - 1]).total_seconds()
+            for i in range(1, len(timestamps))
+        ]
+        avg_seconds = sum(durations) / len(durations)
+        avg_td = timedelta(seconds=avg_seconds)
+        hours = avg_td.seconds // 3600
+        minutes = (avg_td.seconds // 60) % 60
+        return f"{hours} hours, {minutes} minutes per visit"
+
     context = {
-        'tab': 'visitors',
         'visitor': visitor,
         'image_url': image_url,
-        'visits': visits,
-        'nav_items': nav_items(),
-        'history': visits,
+
+        # Required for visitor profile
+        'first_seen': visits.last().timestamp if visits.exists() else None,
+        'last_seen': visits.first().timestamp if visits.exists() else None,
+        'total_visits': visits.count(),
         
-        # Emotion distribution chart data
+        # Emotion Insight
+        'most_frequent_emotion': emotion_dist[0]['emotion'].title() if emotion_dist else "Unknown",
+        'positive_percent': sum([v for k, v in emotion_dist_dict.items() if k.lower() in ['happy', 'surprise']]),  # you can customize
+        'negative_percent': sum([v for k, v in emotion_dist_dict.items() if k.lower() in ['sad', 'angry']]),
+
+        'emotion_counts': emotion_dist_dict,
+        'emotion_percentages': {
+            k: round((v / sum(emotion_dist_dict.values())) * 100, 2)
+            for k, v in emotion_dist_dict.items()
+        } if emotion_dist_dict else {},
+
+        # Recent activity for timeline
+        'recent_activity': visits[:5],  # limit recent to last 5
+        'visit_frequency': visitor.visit_frequency,
+        'average_duration': average_duration(visits),  # define helper for this
+        'timeline': visits[:10],  # recent 10 visits for timeline
+
+        # Charts
         'chart_labels': json.dumps(chart_labels),
         'chart_values': json.dumps(chart_values),
         'chart_colors': json.dumps(background_colors),
-        
-        # Emotion trend chart data
         'trend_labels': json.dumps(chart_labels_trend),
         'trend_datasets': json.dumps(chart_datasets),
     }
+
     return render(request, 'monitor/visitor_detail.html', context)
+
 
 @login_required
 def visit_history_view(request):

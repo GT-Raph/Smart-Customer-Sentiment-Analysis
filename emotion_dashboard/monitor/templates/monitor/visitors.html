@@ -1,5 +1,6 @@
 <!-- visitors.html -->
 {% extends "monitor/base.html" %}
+{% load static %}
 
 {% block page_title %}Visitor Management{% endblock %}
 
@@ -38,7 +39,7 @@
                                     <td>
                                         <div class="d-flex align-items-center">
                                             {% if visitor.image_url %}
-                                            <img src="{{ MEDIA_URL }}{{ visitor.image_url }}" 
+                                            <img src="{{ visitor.image_url }}" 
                                                  class="visitor-avatar me-2"
                                                  onerror="this.style.display='none'; document.getElementById('fallback-{{ forloop.counter }}').style.display='flex'">
                                             {% endif %}
@@ -47,13 +48,13 @@
                                                  {% if visitor.image_url %}style="display:none"{% endif %}>
                                                 {{ visitor.initials }}
                                             </div>
-                                            <span>Visitor #{{ visitor.id }}</span>
+                                            <span>{{ visitor.face_id|default:"Unknown Visitor" }}</span>
                                         </div>
                                     </td>
-                                    <td>{{ visitor.last_seen|date:"M d, Y H:i" }}</td>
+                                    <td>{{ visitor.last_seen|date:"M d, Y H:i"|default:"Never" }}</td>
                                     <td>{{ visitor.visit_count }}</td>
                                     <td>
-                                        <span class="badge badge-emotion {% if visitor.last_emotion %}badge-{{ visitor.last_emotion }}{% endif %}">
+                                        <span class="badge badge-emotion {% if visitor.last_emotion %}badge-{{ visitor.last_emotion|lower }}{% endif %}">
                                             {{ visitor.last_emotion|title|default:"Unknown" }}
                                         </span>
                                     </td>
@@ -137,10 +138,12 @@
         padding: 0.35em 0.65em;
     }
     
-    .badge-happy { background-color: #2ecc71; }
-    .badge-neutral { background-color: #95a5a6; }
-    .badge-sad { background-color: #3498db; }
-    .badge-angry { background-color: #e74c3c; }
-    .badge-surprise { background-color: #f39c12; }
+    .badge-happy { background-color: #2ecc71; color: white; }
+    .badge-neutral { background-color: #95a5a6; color: white; }
+    .badge-sad { background-color: #3498db; color: white; }
+    .badge-angry { background-color: #e74c3c; color: white; }
+    .badge-surprise { background-color: #f39c12; color: white; }
+    .badge-fear { background-color: #9b59b6; color: white; }
+    .badge-disgust { background-color: #1abc9c; color: white; }
 </style>
 {% endblock %}

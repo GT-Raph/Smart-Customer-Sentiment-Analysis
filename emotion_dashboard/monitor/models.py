@@ -1,6 +1,7 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
+from datetime import timedelta
 
 
 class UniqueFaceID(models.Model):
@@ -54,7 +55,19 @@ class Emotion(models.Model):
 class Visit(models.Model):
     face_id = models.CharField(max_length=100, default="unknown")
     visit_time = models.DateTimeField()
+    exit_time = models.DateTimeField(null=True, blank=True)
 
+    @property
+    def emotion_summary(self):
+        # Return a summary string, or whatever makes sense for your app
+        return f"{self.emotion} ({self.timestamp})" if hasattr(self, 'emotion') else "No data"
+    
+    @property
+    def duration(self):
+        if self.exit_time:
+            return self.exit_time - self.visit_time
+        return None
+    
     def __str__(self):
         return f"{self.face_id} - {self.visit_time}"
 
@@ -69,6 +82,14 @@ class Visitor(models.Model):
     name = models.CharField(max_length=100)
     face_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
     registered_at = models.DateTimeField(auto_now_add=True)
+    
+    @property
+    def visit_frequency(self):
+        visits = Visit.objects.filter(face_id=self.face_id).order_by('visit_time')
+        if visits.count() > 1:
+            delta = visits.last().visit_time - visits.first().visit_time
+            return delta / (visits.count() - 1)
+        return timedelta(0)
     
     def __str__(self):
         return self.name
