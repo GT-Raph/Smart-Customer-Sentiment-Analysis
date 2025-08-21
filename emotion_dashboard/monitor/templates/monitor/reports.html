@@ -2,48 +2,129 @@
 
 {% block page_title %}Reports{% endblock %}
 
+{% block extra_css %}
+<style>
+    .report-card {
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .report-header {
+        background: linear-gradient(135deg, #4361ee, #3f37c9);
+        color: white;
+        border-radius: 10px 10px 0 0 !important;
+    }
+    .form-label {
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+    .input-group-text {
+        background-color: #f8f9fa;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="row">
-    <div class="col-md-6 mx-auto">
-        <div class="card">
-            <div class="card-header">
-                <h6 class="mb-0">Generate Report</h6>
-            </div>
-            <div class="card-body">
-                <form method="post">
-                    {% csrf_token %}
-                    <div class="mb-3">
-                        <label class="form-label">Report Type</label>
-                        <select name="report_type" class="form-select">
-                            <option value="summary">Summary Report</option>
-                            <option value="emotions">Emotion Analysis</option>
-                            <option value="visitors">Visitor Statistics</option>
-                            <option value="branch">Branch Performance</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Date Range</label>
-                        <div class="input-group mb-2">
-                            <input type="date" name="date_from" class="form-control">
-                            <span class="input-group-text">to</span>
-                            <input type="date" name="date_to" class="form-control">
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card report-card">
+                <div class="card-header report-header">
+                    <h5 class="mb-0">Generate Custom Report</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post" action="{% url 'reports' %}">
+                        {% csrf_token %}
+                        
+                        <!-- Report Type Selection -->
+                        <div class="mb-4">
+                            <label class="form-label">Report Type</label>
+                            <select name="report_type" class="form-select" id="reportType" required>
+                                <option value="" disabled selected>Select report type</option>
+                                <option value="summary">Summary Report (Excel with charts)</option>
+                                <option value="emotions">Emotion Analysis (Charts)</option>
+                                <option value="visitors">Visitor Statistics (Graphs)</option>
+                                {% if request.user.is_superuser %}
+                                <option value="branch">Branch Performance (Admin only)</option>
+                                {% endif %}
+                            </select>
                         </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Format</label>
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="format" id="formatPdf" value="pdf" checked>
-                            <label class="form-check-label" for="formatPdf">PDF</label>
+
+                        <!-- Date Range -->
+                        <div class="mb-4">
+                            <label class="form-label">Date Range</label>
+                            <div class="input-group">
+                                <input type="date" name="date_from" class="form-control" required>
+                                <span class="input-group-text">to</span>
+                                <input type="date" name="date_to" class="form-control" required>
+                            </div>
                         </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="format" id="formatCsv" value="csv">
-                            <label class="form-check-label" for="formatCsv">CSV</label>
+
+                        <!-- Branch Filter (for non-admin users) -->
+                        {% if not request.user.is_superuser and request.user.branch %}
+                        <input type="hidden" name="branch" value="{{ request.user.branch.id }}">
+                        {% elif request.user.is_superuser %}
+                        <div class="mb-4">
+                            <label class="form-label">Branch Filter (optional)</label>
+                            <select name="branch" class="form-select">
+                                <option value="">All Branches</option>
+                                {% for branch in branches %}
+                                <option value="{{ branch.id }}">{{ branch.name }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Generate Report</button>
-                </form>
+                        {% endif %}
+
+                        <!-- Format Selection -->
+                        <div class="mb-4">
+                            <label class="form-label">Output Format</label>
+                            <div class="d-flex gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="format" id="formatPdf" value="pdf" checked>
+                                    <label class="form-check-label" for="formatPdf">PDF</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="format" id="formatExcel" value="excel">
+                                    <label class="form-check-label" for="formatExcel">Excel</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="format" id="formatCsv" value="csv">
+                                    <label class="form-check-label" for="formatCsv">CSV</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Additional Options -->
+                        <div class="mb-4" id="additionalOptions" style="display: none;">
+                            <label class="form-label">Additional Options</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="include_charts" id="includeCharts" checked>
+                                <label class="form-check-label" for="includeCharts">Include visualizations</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="group_by_week" id="groupByWeek">
+                                <label class="form-check-label" for="groupByWeek">Group data by week</label>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 py-2">
+                            <i class="bi bi-file-earmark-bar-graph me-2"></i>Generate Report
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+    // Show/hide additional options based on report type
+    document.getElementById('reportType').addEventListener('change', function() {
+        const additionalOptions = document.getElementById('additionalOptions');
+        if (this.value === 'summary' || this.value === 'branch') {
+            additionalOptions.style.display = 'block';
+        } else {
+            additionalOptions.style.display = 'none';
+        }
+    });
+</script>
 {% endblock %}

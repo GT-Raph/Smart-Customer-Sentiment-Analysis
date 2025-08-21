@@ -13,20 +13,21 @@
                 <h5>{{ branch.name }}</h5>
                 <p class="text-muted mb-1">Code Prefix: {{ branch.code_prefix }}</p>
                 <p class="text-muted">Location: {{ branch.location }}</p>
-                
+
                 <div class="d-flex justify-content-between border-top pt-3 mt-3">
                     <div class="text-center">
                         <h4 class="mb-0">{{ total_emotions }}</h4>
                         <small class="text-muted">Total Detections</small>
                     </div>
                     <div class="text-center">
-                        <h4 class="mb-0">{{ emotions|length }}</h4>
+                        <h4 class="mb-0">{{ emotion_dist|length }}</h4>
                         <small class="text-muted">Emotions</small>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
     <div class="col-md-8">
         <div class="card">
             <div class="card-header">
@@ -86,20 +87,20 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for hour in hourly_data|slice:":10" %}
+                            {% for visit in visits %}
                             <tr>
-                                <td>{{ hour.face_id }}</td>
+                                <td>{{ visit.visitor.face_id }}</td>
                                 <td>
                                     <span class="badge badge-emotion 
-                                        {% if hour.emotion == 'happy' %}badge-happy
-                                        {% elif hour.emotion == 'neutral' %}badge-neutral
-                                        {% elif hour.emotion == 'sad' %}badge-sad
-                                        {% elif hour.emotion == 'angry' %}badge-angry
+                                        {% if visit.emotion == 'happy' %}badge-happy
+                                        {% elif visit.emotion == 'neutral' %}badge-neutral
+                                        {% elif visit.emotion == 'sad' %}badge-sad
+                                        {% elif visit.emotion == 'angry' %}badge-angry
                                         {% else %}badge-surprise{% endif %}">
-                                        {{ hour.emotion|title }}
+                                        {{ visit.emotion|title }}
                                     </span>
                                 </td>
-                                <td>{{ hour.timestamp|date:"M d, Y H:i" }}</td>
+                                <td>{{ visit.timestamp|date:"M d, Y H:i" }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -112,6 +113,7 @@
 {% endblock %}
 
 {% block chart_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     // Emotion Distribution Chart
     const emotionCtx = document.getElementById('emotionChart').getContext('2d');
@@ -137,7 +139,7 @@
             }
         }
     });
-    
+
     // Hourly Activity Chart
     const hourlyCtx = document.getElementById('hourlyChart').getContext('2d');
     const hourlyChart = new Chart(hourlyCtx, {
@@ -161,7 +163,7 @@
             }
         }
     });
-    
+
     // Positivity Chart
     const posCtx = document.getElementById('positivityChart').getContext('2d');
     const posChart = new Chart(posCtx, {

@@ -1,110 +1,95 @@
-from django.contrib.auth.models import AbstractUser
 from django.db import models
-from django.utils import timezone
-from datetime import timedelta
-
-
-class UniqueFaceID(models.Model):
-    face_id = models.CharField(max_length=255, primary_key=True)
-    embedding = models.JSONField()
-
-    class Meta:
-        managed = False  # Tell Django NOT to manage this table
-        db_table = 'unique_face_id'  # Exact name of the MySQL table
+from django.contrib.auth.models import AbstractUser
 
 
 class Branch(models.Model):
     name = models.CharField(max_length=100)
-    code_prefix = models.CharField(max_length=10, unique=True)  # e.g. 'FBLNUN'
+    pc_prefix = models.CharField(
+        max_length=50,
+        unique=True,
+        help_text="PC name prefix for this branch"
+    )
+    location = models.CharField(max_length=200, blank=True)
+    is_active = models.BooleanField(default=True)
+    
+    class Meta:
+        verbose_name = "Branch"
+        verbose_name_plural = "Branches"
 
     def __str__(self):
-        return self.name
-    
-class UserProfile(models.Model):
-    user = models.OneToOneField('CustomUser', on_delete=models.CASCADE)
-    branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, null=True, blank=True)
-    
+        return f"{self.name} ({self.pc_prefix})"
+
     @property
-    def is_superadmin(self):
-        return self.user.is_superuser
+    def code_prefix(self):
+        """For admin compatibility: alias for pc_prefix."""
+        return self.pc_prefix
 
 class CustomUser(AbstractUser):
     branch = models.ForeignKey(
-        Branch, 
-        on_delete=models.PROTECT,  # Prevent branch deletion if users exist
+        Branch,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         verbose_name="Assigned Branch"
     )
 
     def save(self, *args, **kwargs):
-        """Ensure superusers don't get branch assignments"""
         if self.is_superuser:
             self.branch = None
         super().save(*args, **kwargs)
 
-class Emotion(models.Model):
-    face = models.ForeignKey(UniqueFaceID, on_delete=models.CASCADE)
-    detected_emotion = models.CharField(max_length=100)
-    confidence = models.FloatField(null=True, blank=True)
-    timestamp = models.DateTimeField()
 
-    def __str__(self):
-        return f"{self.face.face_id} - {self.detected_emotion}"
-
-class Visit(models.Model):
-    face_id = models.CharField(max_length=100, default="unknown")
-    visit_time = models.DateTimeField()
-    exit_time = models.DateTimeField(null=True, blank=True)
-
-    @property
-    def emotion_summary(self):
-        # Return a summary string, or whatever makes sense for your app
-        return f"{self.emotion} ({self.timestamp})" if hasattr(self, 'emotion') else "No data"
+class UserProfile(models.Model):
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
+    branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    class Meta:
+        # Add this if you want to use a different table name
+        # db_table = 'monitor_userprofile'
+        pass
     
     @property
-    def duration(self):
-        if self.exit_time:
-            return self.exit_time - self.visit_time
+    def is_superadmin(self):
+        return self.user.is_superuser
+    
+    @property
+    def pc_prefix(self):
+        """Return the PC prefix from the associated branch"""
+        if self.branch:
+            return self.branch.pc_prefix  # Fixed from code_prefix to pc_prefix
         return None
     
     def __str__(self):
-        return f"{self.face_id} - {self.visit_time}"
+        if self.branch:
+            return f"{self.user.username} - {self.branch.name}"
+        return f"{self.user.username} - No Branch"
 
-class VisitDetail(models.Model):
-    visit = models.ForeignKey(Visit, on_delete=models.CASCADE)
-    image_path = models.TextField()
 
-    def __str__(self):
-        return f"Detail for {self.visit}"
-    
 class Visitor(models.Model):
-    name = models.CharField(max_length=100)
-    face_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
-    registered_at = models.DateTimeField(auto_now_add=True)
-    
-    @property
-    def visit_frequency(self):
-        visits = Visit.objects.filter(face_id=self.face_id).order_by('visit_time')
-        if visits.count() > 1:
-            delta = visits.last().visit_time - visits.first().visit_time
-            return delta / (visits.count() - 1)
-        return timedelta(0)
-    
-    def __str__(self):
-        return self.name
-
-class VisitLog(models.Model):
-    visitor = models.ForeignKey(Visitor, on_delete=models.CASCADE)
-    emotion = models.CharField(max_length=50)
-    timestamp = models.DateTimeField(default=timezone.now)
-    branch = models.ForeignKey(
-        Branch, 
-        on_delete=models.CASCADE,
-        related_name='visit_logs',
-        null=False,  # Ensure branch is always required
-        # Remove default=1 unless you are sure branch with pk=1 always exists
-    )
+    """Represents a unique visitor detected by the system."""
+    face_id = models.CharField(max_length=128, unique=True)
+    first_seen = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.visitor} - {self.emotion} at {self.timestamp}"
+        return f"Visitor {self.face_id}"
+
+
+
+class CapturedSnapshot(models.Model):
+    """Snapshots tied to a visitor."""
+    id = models.AutoField(primary_key=True)
+    visitor = models.ForeignKey(Visitor, to_field="face_id", db_column="face_id", on_delete=models.CASCADE)
+    pc_name = models.CharField(max_length=128)
+    image_path = models.CharField(max_length=255)
+    timestamp = models.DateTimeField()
+    emotion = models.CharField(max_length=32, null=True, blank=True)
+    processed = models.BooleanField(default=False)
+    embedding = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        managed = False  # Don’t let Django re-create the table
+        db_table = 'captured_snapshots'
+
+    def __str__(self):
+        return f"Visitor {self.visitor.face_id} ({self.emotion}) on {self.pc_name}"
+        return f"Visitor {self.visitor.face_id} ({self.emotion}) on {self.pc_name}"
