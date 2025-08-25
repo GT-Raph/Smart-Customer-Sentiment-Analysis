@@ -1,129 +1,246 @@
 {% extends "monitor/base.html" %}
+{% load static %}
 
 {% block page_title %}Emotion Analytics{% endblock %}
 
+{% block styles %}
+<style>
+    .card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+    }
+    
+    .card-header {
+        background-color: #fff;
+        border-bottom: 1px solid rgba(0,0,0,0.08);
+        padding: 1.25rem 1.5rem;
+    }
+    
+    .time-selector .btn {
+        border-radius: 8px;
+        padding: 0.4rem 0.8rem;
+        font-size: 0.85rem;
+    }
+    
+    .emotion-progress {
+        height: 20px;
+        border-radius: 10px;
+        background-color: #f8f9fa;
+    }
+    
+    .emotion-badge {
+        font-size: 0.75rem;
+        padding: 0.4em 0.8em;
+        border-radius: 20px;
+    }
+    
+    /* Emotion Colors */
+    .bg-happy { background-color: #FFD166; }
+    .bg-neutral { background-color: #8A8A8A; }
+    .bg-sad { background-color: #118AB2; }
+    .bg-angry { background-color: #EF476F; }
+    .bg-surprise { background-color: #8338EC; }
+    
+    .text-happy { color: #FFD166; }
+    .text-neutral { color: #8A8A8A; }
+    .text-sad { color: #118AB2; }
+    .text-angry { color: #EF476F; }
+    .text-surprise { color: #8338EC; }
+    
+    .table th {
+        border-top: none;
+        font-weight: 600;
+        color: #6c757d;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .chart-container {
+        position: relative;
+        width: 100%;
+    }
+    
+    .stat-badge {
+        background-color: #f8f9fa;
+        color: #6c757d;
+        font-weight: 500;
+        padding: 0.35em 0.65em;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="row mb-4">
-    <div class="col">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h6 class="mb-0">Emotion Trends Over Time</h6>
-                <div class="btn-group">
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="d-flex justify-content-between align-items-center">
+                <h4 class="mb-0"><i class="fas fa-chart-line text-primary me-2"></i>Emotion Analytics</h4>
+                <div class="btn-group time-selector">
                     <a href="?range=day" 
-                       class="btn btn-sm {% if time_range == 'day' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Day</a>
+                       class="btn {% if time_range == 'day' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                        <i class="fas fa-calendar-day me-1"></i> Day
+                    </a>
                     <a href="?range=week" 
-                       class="btn btn-sm {% if time_range == 'week' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Week</a>
+                       class="btn {% if time_range == 'week' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                        <i class="fas fa-calendar-week me-1"></i> Week
+                    </a>
                     <a href="?range=month" 
-                       class="btn btn-sm {% if time_range == 'month' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Month</a>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="chart-container" style="height: 400px;">
-                    <canvas id="trendChart"></canvas>
+                       class="btn {% if time_range == 'month' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                        <i class="fas fa-calendar-alt me-1"></i> Month
+                    </a>
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-{% if branch_comparison and request.user.is_superuser %}
-<div class="row mb-4">
-    <div class="col">
-        <div class="card">
-            <div class="card-header">
-                <h6 class="mb-0">Branch Comparison</h6>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Branch</th>
-                                <th>Happy</th>
-                                <th>Neutral</th>
-                                <th>Negative</th>
-                                <th>Total Visits</th>
-                                <th>Positivity</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for branch in branch_comparison %}
-                            <tr>
-                                <td>{{ branch.name }}</td>
-                                <td>
-                                    <div class="d-flex align-items-center">
-                                        <div class="progress flex-grow-1 me-2" style="height: 20px;">
-                                            <div class="progress-bar bg-success" role="progressbar" 
-                                                 style="width: {{ branch.happy }}%" 
-                                                 aria-valuenow="{{ branch.happy }}" aria-valuemin="0" aria-valuemax="100"></div>
-                                        </div>
-                                        <span>{{ branch.happy|floatformat:1 }}%</span>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div class="d-flex align-items-center">
-                                        <div class="progress flex-grow-1 me-2" style="height: 20px;">
-                                            <div class="progress-bar bg-secondary" role="progressbar" 
-                                                 style="width: {{ branch.neutral }}%" 
-                                                 aria-valuenow="{{ branch.neutral }}" aria-valuemin="0" aria-valuemax="100"></div>
-                                        </div>
-                                        <span>{{ branch.neutral|floatformat:1 }}%</span>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div class="d-flex align-items-center">
-                                        <div class="progress flex-grow-1 me-2" style="height: 20px;">
-                                            <div class="progress-bar bg-danger" role="progressbar" 
-                                                 style="width: {{ branch.negative }}%" 
-                                                 aria-valuenow="{{ branch.negative }}" aria-valuemin="0" aria-valuemax="100"></div>
-                                        </div>
-                                        <span>{{ branch.negative|floatformat:1 }}%</span>
-                                    </div>
-                                </td>
-                                <td>{{ branch.total_visits }}</td>
-                                <td>
-                                    {% if branch.happy >= 60 %}
-                                    <span class="badge bg-success">High</span>
-                                    {% elif branch.happy >= 40 %}
-                                    <span class="badge bg-warning">Medium</span>
-                                    {% else %}
-                                    <span class="badge bg-danger">Low</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+    <!-- Emotion Trends Chart -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="fas fa-chart-line me-2 text-primary"></i>Emotion Trends Over Time</h6>
+                    <span class="stat-badge">
+                        <i class="fas fa-clock me-1"></i>Last {{ time_range|title }}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container" style="height: 400px;">
+                        <canvas id="trendChart"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
-{% endif %}
 
-<div class="row">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h6 class="mb-0">Visits by Hour</h6>
-                <span class="badge bg-info">Today</span>
-            </div>
-            <div class="card-body">
-                <div class="chart-container" style="height: 300px;">
-                    <canvas id="hourlyChart"></canvas>
+    {% if branch_comparison and request.user.is_superuser %}
+    <!-- Branch Comparison Table -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-building me-2 text-primary"></i>Branch Comparison</h6>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th><i class="fas fa-store me-1"></i> Branch</th>
+                                    <th><i class="fas fa-smile me-1 text-happy"></i> Happy</th>
+                                    <th><i class="fas fa-meh me-1 text-neutral"></i> Neutral</th>
+                                    <th><i class="fas fa-frown me-1 text-sad"></i> Negative</th>
+                                    <th><i class="fas fa-users me-1 text-info"></i> Total Visits</th>
+                                    <th><i class="fas fa-star me-1 text-warning"></i> Positivity</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for branch in branch_comparison %}
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <i class="fas fa-building text-muted me-2"></i>
+                                            <strong>{{ branch.name }}</strong>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="emotion-progress flex-grow-1 me-2">
+                                                <div class="progress-bar bg-happy" role="progressbar" 
+                                                     style="width: {{ branch.happy }}%" 
+                                                     aria-valuenow="{{ branch.happy }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <span class="text-happy fw-bold">{{ branch.happy|floatformat:1 }}%</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="emotion-progress flex-grow-1 me-2">
+                                                <div class="progress-bar bg-neutral" role="progressbar" 
+                                                     style="width: {{ branch.neutral }}%" 
+                                                     aria-valuenow="{{ branch.neutral }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <span class="text-neutral fw-bold">{{ branch.neutral|floatformat:1 }}%</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="emotion-progress flex-grow-1 me-2">
+                                                <div class="progress-bar bg-sad" role="progressbar" 
+                                                     style="width: {{ branch.negative }}%" 
+                                                     aria-valuenow="{{ branch.negative }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <span class="text-sad fw-bold">{{ branch.negative|floatformat:1 }}%</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-light text-dark fs-6">
+                                            <i class="fas fa-user me-1"></i>{{ branch.total_visits }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if branch.happy >= 60 %}
+                                        <span class="badge bg-success emotion-badge">
+                                            <i class="fas fa-smile me-1"></i>High
+                                        </span>
+                                        {% elif branch.happy >= 40 %}
+                                        <span class="badge bg-warning emotion-badge">
+                                            <i class="fas fa-meh me-1"></i>Medium
+                                        </span>
+                                        {% else %}
+                                        <span class="badge bg-danger emotion-badge">
+                                            <i class="fas fa-frown me-1"></i>Low
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h6 class="mb-0">Emotion Distribution</h6>
-                <span class="badge bg-info">Last 7 Days</span>
+    {% endif %}
+
+    <!-- Bottom Charts -->
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="fas fa-clock me-2 text-primary"></i>Visits by Hour</h6>
+                    <span class="stat-badge">
+                        <i class="fas fa-calendar-day me-1"></i>Today
+                    </span>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container" style="height: 300px;">
+                        <canvas id="hourlyChart"></canvas>
+                    </div>
+                </div>
             </div>
-            <div class="card-body">
-                <div class="chart-container" style="height: 300px;">
-                    <canvas id="distributionChart"></canvas>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="fas fa-chart-pie me-2 text-primary"></i>Emotion Distribution</h6>
+                    <span class="stat-badge">
+                        <i class="fas fa-history me-1"></i>Last 7 Days
+                    </span>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container" style="height: 300px;">
+                        <canvas id="distributionChart"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
@@ -135,22 +252,32 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
+    // Emotion colors
+    const emotionColors = {
+        'happy': '#FFD166',
+        'neutral': '#8A8A8A',
+        'sad': '#118AB2',
+        'angry': '#EF476F',
+        'surprise': '#8338EC'
+    };
+
     // Emotion Trend Chart (Line)
     try {
         const trendCtx = document.getElementById('trendChart').getContext('2d');
         const trendChart = new Chart(trendCtx, {
             type: 'line',
             data: {
-                labels: {{ chart_data.labels|safe }},
+                labels: {{ chart_data.labels|default:"[]"|safe }},
                 datasets: [
                     {% for dataset in chart_data.datasets %}
                     {
                         label: '{{ dataset.label }}',
-                        data: {{ dataset.data }},
-                        borderColor: '{{ dataset.borderColor }}',
-                        backgroundColor: '{{ dataset.backgroundColor }}',
+                        data: {{ dataset.data|default:"[]"|safe }},
+                        borderColor: emotionColors['{{ dataset.label|lower }}'] || '#FFD166',
+                        backgroundColor: emotionColors['{{ dataset.label|lower }}'] + '20' || 'rgba(255,209,102,0.15)',
                         borderWidth: 3,
                         pointRadius: 4,
+                        pointHoverRadius: 6,
                         tension: 0.3,
                         fill: true
                     }{% if not forloop.last %},{% endif %}
@@ -161,11 +288,36 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { position: 'top' }
+                    legend: { 
+                        position: 'top',
+                        labels: {
+                            usePointStyle: true,
+                            padding: 20
+                        }
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        padding: 10
+                    }
                 },
                 scales: {
-                    y: { beginAtZero: true },
-                    x: { }
+                    y: { 
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.05)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
                 }
             }
         });
@@ -179,18 +331,35 @@
         const hourlyChart = new Chart(hourlyCtx, {
             type: 'bar',
             data: {
-                labels: {{ hourly_labels|safe }},
+                labels: {{ hourly_labels|default:"[]"|safe }},
                 datasets: [{
                     label: 'Total Visits',
-                    data: {{ hourly_data }},
-                    backgroundColor: 'rgba(52, 152, 219, 0.7)'
+                    data: {{ hourly_data|default:"[]"|safe }},
+                    backgroundColor: 'rgba(52, 152, 219, 0.7)',
+                    borderRadius: 6,
+                    borderWidth: 0
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
                 scales: {
-                    y: { beginAtZero: true }
+                    y: { 
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.05)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
                 }
             }
         });
@@ -204,17 +373,35 @@
         const distChart = new Chart(distCtx, {
             type: 'doughnut',
             data: {
-                labels: {{ dist_labels|safe }},
+                labels: {{ dist_labels|default:"[]"|safe }},
                 datasets: [{
-                    data: {{ dist_data }},
+                    data: {{ dist_data|default:"[]"|safe }},
                     backgroundColor: [
-                        '#2ecc71', '#95a5a6', '#e74c3c', '#f39c12', '#3498db'
-                    ]
+                        emotionColors.happy,
+                        emotionColors.neutral,
+                        emotionColors.sad,
+                        emotionColors.angry,
+                        emotionColors.surprise
+                    ],
+                    borderWidth: 2,
+                    borderColor: '#fff',
+                    borderRadius: 6,
+                    hoverOffset: 10
                 }]
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            usePointStyle: true,
+                            padding: 15
+                        }
+                    }
+                },
+                cutout: '60%'
             }
         });
     } catch (error) {

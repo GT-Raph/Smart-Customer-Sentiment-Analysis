@@ -4,115 +4,231 @@
 
 {% block page_title %}Branch Overview{% endblock %}
 
+{% block styles %}
+<style>
+    .branch-card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        border-radius: 12px;
+        overflow: hidden;
+        border: none;
+    }
+    
+    .branch-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 12px 30px rgba(0,0,0,0.15);
+    }
+    
+    .chart-container {
+        position: relative;
+        width: 100%;
+    }
+    
+    .progress {
+        height: 12px;
+        border-radius: 6px;
+        background-color: #f8f9fa;
+    }
+    
+    .progress-bar {
+        border-radius: 6px;
+        transition: width 0.6s ease;
+    }
+    
+    .icon-container {
+        width: 50px;
+        height: 50px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 15px;
+    }
+    
+    .stat-number {
+        font-size: 1.8rem;
+        font-weight: 700;
+    }
+    
+    .emotion-badge {
+        font-size: 0.8rem;
+        padding: 0.5em 1em;
+        border-radius: 20px;
+    }
+    
+    /* Emotion-specific colors */
+    .bg-happy { background-color: #FFD166; color: #000; }
+    .bg-neutral { background-color: #8A8A8A; color: #fff; }
+    .bg-sad { background-color: #118AB2; color: #fff; }
+    .bg-angry { background-color: #EF476F; color: #fff; }
+    .bg-surprise { background-color: #8338EC; color: #fff; }
+    
+    .text-happy { color: #FFD166; }
+    .text-neutral { color: #8A8A8A; }
+    .text-sad { color: #118AB2; }
+    .text-angry { color: #EF476F; }
+    .text-surprise { color: #8338EC; }
+    
+    .card-header {
+        background-color: #fff;
+        border-bottom: 1px solid rgba(0,0,0,0.08);
+    }
+    
+    .time-selector .btn {
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+    }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+{% endblock %}
+
 {% block content %}
-<div class="row mb-4">
-    {% for branch in branches %}
-    <div class="col-md-4 mb-4">
-        <div class="card h-100">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h6 class="mb-0">{{ branch.name }}</h6>
-                <a href="{% url 'branch_detail' branch.id %}" class="btn btn-sm btn-outline-primary">View</a>
-            </div>
-            <div class="card-body">
-                <div class="d-flex justify-content-between mb-3">
-                    <div>
-                        <h6 class="text-muted mb-1">Visitors</h6>
-                        <h3 class="mb-0">{{ branch.visitor_count }}</h3>
-                    </div>
-                    <div>
-                        <h6 class="text-muted mb-1">Top Emotion</h6>
-                        <h3 class="mb-0">
-                            <span class="badge 
-                                {% if branch.top_emotion == 'happy' %}bg-success
-                                {% elif branch.top_emotion == 'neutral' %}bg-secondary
-                                {% elif branch.top_emotion == 'sad' %}bg-danger
-                                {% elif branch.top_emotion == 'angry' %}bg-warning
-                                {% else %}bg-primary{% endif %}">
-                                {{ branch.top_emotion|title }}
-                            </span>
-                        </h3>
-                    </div>
-                </div>
-                
-                <h6 class="text-muted mb-2">Positivity Score</h6>
-                <div class="progress mb-3" style="height: 10px;">
-                    <div class="progress-bar 
-                        {% if branch.positivity_score >= 0.7 %}bg-success
-                        {% elif branch.positivity_score >= 0.4 %}bg-warning
-                        {% else %}bg-danger{% endif %}" 
-                        role="progressbar" 
-                        style="width: {{ branch.positivity_percent }}%"
-                        aria-valuenow="{{ branch.positivity_percent }}" 
-                        aria-valuemin="0" 
-                        aria-valuemax="100">
-                    </div>
-                </div>
-                
-                <h6 class="text-muted mb-2">Weekly Trend</h6>
-                <div class="chart-container" style="height: 100px;">
-                    <canvas id="trend{{ branch.id }}"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endfor %}
-</div>
-
 <div class="container-fluid">
-    <!-- Debugging Section -->
-    <div class="alert alert-info d-print-block">
-        <h5>Chart Debug Information</h5>
-        <ul>
-            <li>Time Range: {{ debug_info.time_range }}</li>
-            <li>Days: {{ debug_info.days|join:", " }}</li>
-            <li>Branches: {{ debug_info.branch_count }}</li>
-            <li>Data Available: {{ debug_info.has_data|yesno:"Yes,No" }}</li>
-            <li>Datasets: {{ chart_datasets|length }}</li>
-        </ul>
-    </div>
-
+    <!-- Time Range Selector -->
     <div class="row mb-4">
         <div class="col">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0">Branch Performance Comparison (Chart View)</h6>
-                    <div class="btn-group">
-                        <a href="?range=day" 
-                           class="btn btn-sm {% if time_range == 'day' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Day</a>
-                        <a href="?range=week" 
-                           class="btn btn-sm {% if time_range == 'week' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Week</a>
-                        <a href="?range=month" 
-                           class="btn btn-sm {% if time_range == 'month' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Month</a>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div class="chart-container" style="height: 400px; position: relative;">
-                        <canvas id="comparisonChart"></canvas>
-                        <div id="noDataMessage" class="text-center" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none;">
-                            <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
-                            <h5 class="text-muted">No Data Available</h5>
-                            <p class="text-muted">No visit records found for selected time range</p>
+            <div class="card border-0 shadow-sm">
+                <div class="card-body py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-chart-line text-primary me-2"></i>Branch Performance Dashboard</h5>
+                        <div class="btn-group time-selector">
+                            <a href="?range=day" 
+                               class="btn {% if time_range == 'day' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                                <i class="fas fa-calendar-day me-1"></i> Today
+                            </a>
+                            <a href="?range=week" 
+                               class="btn {% if time_range == 'week' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                                <i class="fas fa-calendar-week me-1"></i> Week
+                            </a>
+                            <a href="?range=month" 
+                               class="btn {% if time_range == 'month' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                                <i class="fas fa-calendar-alt me-1"></i> Month
+                            </a>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-    
-{% endblock %}
 
-{% block chart_styles %}
-<style>
-    .chart-container {
-        position: relative;
-        width: 100%;
-        height: 400px;
-    }
-    .progress {
-        height: 10px;
-    }
-</style>
+    <!-- Branch Cards -->
+    <div class="row mb-4">
+        {% for branch in branches %}
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card h-100 branch-card shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center py-3">
+                    <h6 class="mb-0 text-truncate">
+                        <i class="fas fa-building text-primary me-2"></i>{{ branch.name }}
+                    </h6>
+                    <a href="{% url 'branch_detail' branch.id %}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-eye me-1"></i> Details
+                    </a>
+                </div>
+                <div class="card-body">
+                    <!-- Visitor Stats -->
+                    <div class="d-flex justify-content-between mb-4">
+                        <div class="text-center">
+                            <div class="icon-container bg-primary bg-opacity-10">
+                                <i class="fas fa-users text-primary"></i>
+                            </div>
+                            <h6 class="text-muted mb-1">Visitors</h6>
+                            <h3 class="mb-0 text-primary stat-number">{{ branch.visitor_count }}</h3>
+                        </div>
+                        <div class="text-center">
+                            <div class="icon-container 
+                                {% if branch.top_emotion == 'happy' %}bg-happy bg-opacity-10
+                                {% elif branch.top_emotion == 'neutral' %}bg-neutral bg-opacity-10
+                                {% elif branch.top_emotion == 'sad' %}bg-sad bg-opacity-10
+                                {% elif branch.top_emotion == 'angry' %}bg-angry bg-opacity-10
+                                {% elif branch.top_emotion == 'surprise' %}bg-surprise bg-opacity-10
+                                {% else %}bg-secondary bg-opacity-10{% endif %}">
+                                <i class="fas 
+                                    {% if branch.top_emotion == 'happy' %}fa-smile text-happy
+                                    {% elif branch.top_emotion == 'neutral' %}fa-meh text-neutral
+                                    {% elif branch.top_emotion == 'sad' %}fa-sad-tear text-sad
+                                    {% elif branch.top_emotion == 'angry' %}fa-angry text-angry
+                                    {% elif branch.top_emotion == 'surprise' %}fa-surprise text-surprise
+                                    {% else %}fa-question text-secondary{% endif %}">
+                                </i>
+                            </div>
+                            <h6 class="text-muted mb-1">Top Emotion</h6>
+                            <h3 class="mb-0">
+                                <span class="badge emotion-badge 
+                                    {% if branch.top_emotion == 'happy' %}bg-happy
+                                    {% elif branch.top_emotion == 'neutral' %}bg-neutral
+                                    {% elif branch.top_emotion == 'sad' %}bg-sad
+                                    {% elif branch.top_emotion == 'angry' %}bg-angry
+                                    {% elif branch.top_emotion == 'surprise' %}bg-surprise
+                                    {% else %}bg-secondary{% endif %}">
+                                    {{ branch.top_emotion|title }}
+                                </span>
+                            </h3>
+                        </div>
+                    </div>
+                    
+                    <!-- Positivity Score -->
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="text-muted mb-0"><i class="fas fa-chart-line me-1"></i> Positivity Score</h6>
+                            <span class="badge 
+                                {% if branch.positivity_score >= 0.7 %}bg-success
+                                {% elif branch.positivity_score >= 0.4 %}bg-warning
+                                {% else %}bg-danger{% endif %}">
+                                <i class="fas 
+                                    {% if branch.positivity_score >= 0.7 %}fa-smile
+                                    {% elif branch.positivity_score >= 0.4 %}fa-meh
+                                    {% else %}fa-frown{% endif %} me-1">
+                                </i>
+                                {{ branch.positivity_percent }}%
+                            </span>
+                        </div>
+                        <div class="progress" style="height: 12px; border-radius: 6px;">
+                            <div class="progress-bar 
+                                {% if branch.positivity_score >= 0.7 %}bg-success
+                                {% elif branch.positivity_score >= 0.4 %}bg-warning
+                                {% else %}bg-danger{% endif %}" 
+                                role="progressbar" 
+                                style="width: {{ branch.positivity_percent }}%"
+                                aria-valuenow="{{ branch.positivity_percent }}" 
+                                aria-valuemin="0" 
+                                aria-valuemax="100">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Mini Trend Chart -->
+                    <div>
+                        <h6 class="text-muted mb-3"><i class="fas fa-trending-up me-1"></i> Performance Trend</h6>
+                        <div class="chart-container" style="height: 80px;">
+                            <canvas id="trend{{ branch.id }}"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
 
+    <!-- Comparison Chart -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header py-3">
+                    <h5 class="mb-0"><i class="fas fa-chart-line text-primary me-2"></i>Branch Performance Comparison</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container" style="height: 450px; position: relative;">
+                        <canvas id="comparisonChart"></canvas>
+                        <div id="noDataMessage" class="text-center py-5" style="display: none;">
+                            <i class="fas fa-chart-bar fa-4x text-muted mb-3"></i>
+                            <h4 class="text-muted">No Data Available</h4>
+                            <p class="text-muted">No visit records found for the selected time range</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block chart_scripts %}
@@ -123,97 +239,19 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const ctx = document.getElementById('comparisonChart').getContext('2d');
-    
-    // Get data from Django context
-    const chartData = {
-        datasets: {{ chart_datasets|safe }}
-    };
-
-    new Chart(ctx, {
-        type: 'line',
-        data: chartData,
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                x: {
-                    type: 'time',
-                    time: {
-                        unit: 'day',
-                        tooltipFormat: 'MMM D',
-                        displayFormats: {
-                            day: 'MMM D'
-                        }
-                    },
-                    title: {
-                        display: true,
-                        text: 'Date'
-                    },
-                    grid: {
-                        display: false
-                    }
-                },
-                y: {
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Number of Visits'
-                    },
-                    ticks: {
-                        precision: 0,
-                        stepSize: 1
-                    }
-                }
-            },
-            plugins: {
-                legend: {
-                    position: 'top',
-                    labels: {
-                        boxWidth: 12,
-                        padding: 20
-                    }
-                },
-                tooltip: {
-                    mode: 'index',
-                    intersect: false,
-                    callbacks: {
-                        title: function(tooltipItems) {
-                            return moment(tooltipItems[0].parsed.x).format('MMM D, YYYY');
-                        }
-                    }
-                }
-            },
-            interaction: {
-                intersect: false,
-                mode: 'index'
-            }
-        }
-    });
-});
-</script>
-
-
-<!-- Chart.js Libraries -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/moment@2.29.1/moment.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.0/dist/chartjs-adapter-moment.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const ctx = document.getElementById('comparisonChart').getContext('2d');
+    const ctx = document.getElementById('comparisonChart');
     const noDataMsg = document.getElementById('noDataMessage');
     
     // Get data from Django context
     const chartData = {
+        labels: {{ chart_labels|safe }},
         datasets: {{ chart_datasets|safe }}
     };
 
     // Check if any dataset has data
     let hasData = false;
     for (const dataset of chartData.datasets) {
-        if (dataset.data.length > 0) {
+        if (dataset.data && dataset.data.length > 0) {
             hasData = true;
             break;
         }
@@ -224,10 +262,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
 
-    // Register plugins
-    Chart.register(ChartDataLabels);
-
-    // Create chart
+    // Create comparison chart
     new Chart(ctx, {
         type: 'line',
         data: chartData,
@@ -236,21 +271,15 @@ document.addEventListener('DOMContentLoaded', function() {
             maintainAspectRatio: false,
             scales: {
                 x: {
-                    type: 'time',
-                    time: {
-                        unit: 'day',
-                        tooltipFormat: 'MMM D, YYYY',
-                        displayFormats: {
-                            day: 'MMM D'
-                        }
-                    },
+                    display: true,
                     title: {
                         display: true,
                         text: 'Date',
                         font: {
                             size: 14,
                             weight: 'bold'
-                        }
+                        },
+                        color: '#6c757d'
                     },
                     grid: {
                         display: true,
@@ -261,20 +290,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     beginAtZero: true,
                     title: {
                         display: true,
-                        text: 'Number of Visits',
+                        text: 'Net Positive Emotions (Happy - Sad/Angry)',
                         font: {
                             size: 14,
                             weight: 'bold'
-                        }
+                        },
+                        color: '#6c757d'
                     },
                     ticks: {
-                        precision: 0,
-                        stepSize: 1,
-                        callback: function(value) {
-                            if (value % 1 === 0) {
-                                return value;
-                            }
-                        }
+                        precision: 0
                     },
                     grid: {
                         color: 'rgba(0, 0, 0, 0.05)'
@@ -285,18 +309,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 legend: {
                     position: 'top',
                     labels: {
-                        boxWidth: 12,
+                        boxWidth: 15,
                         padding: 20,
                         font: {
                             size: 12
-                        }
+                        },
+                        usePointStyle: true
                     }
                 },
                 tooltip: {
                     mode: 'index',
                     intersect: false,
-                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-                    padding: 10,
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
                     titleFont: {
                         size: 14
                     },
@@ -304,16 +329,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         size: 13
                     },
                     callbacks: {
-                        title: function(tooltipItems) {
-                            return moment(tooltipItems[0].parsed.x).format('MMM D, YYYY');
-                        },
                         label: function(context) {
-                            return `${context.dataset.label}: ${context.parsed.y} visits`;
+                            return `${context.dataset.label}: ${context.parsed.y}`;
                         }
                     }
-                },
-                datalabels: {
-                    display: false  // Disable by default, can enable for specific datasets
                 }
             },
             interaction: {
@@ -327,14 +346,66 @@ document.addEventListener('DOMContentLoaded', function() {
             elements: {
                 point: {
                     radius: 4,
-                    hoverRadius: 6
+                    hoverRadius: 7,
+                    hoverBorderWidth: 2
                 },
                 line: {
+                    tension: 0.3,
                     borderWidth: 3
                 }
             }
         }
     });
+
+    // Create mini trend charts for each branch card
+    {% for branch in branches %}
+    (function() {
+        const trendCtx = document.getElementById('trend{{ branch.id }}');
+        const trendData = {{ branch.trend_counts|safe }};
+        const labels = {{ chart_labels|safe }};
+        
+        new Chart(trendCtx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: trendData,
+                    borderColor: 'rgba(52, 152, 219, 0.8)',
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 0,
+                    pointHoverRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    x: {
+                        display: false
+                    },
+                    y: {
+                        display: false
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        enabled: false
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                }
+            }
+        });
+    })();
+    {% endfor %}
 });
 </script>
 {% endblock %}
