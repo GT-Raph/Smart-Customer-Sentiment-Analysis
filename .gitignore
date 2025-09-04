@@ -1,0 +1,4 @@
+# Ignore face data and process folders
+emotion_detection_system/captured_faces/
+emotion_detection_system/known_faces/
+emotion_detection_system/Process/

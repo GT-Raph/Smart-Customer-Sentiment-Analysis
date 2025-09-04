@@ -5,12 +5,12 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
-from .models import CapturedSnapshot
+# from . import models
+from .models import Branch, CapturedSnapshot
 from datetime import timedelta, datetime
 import json
 from django.core.exceptions import PermissionDenied
 from django.contrib.auth import authenticate, login
-from .models import Branch, CapturedSnapshot
 from django.db.models import Count
 import json
 from datetime import datetime, timedelta
@@ -97,10 +97,24 @@ def dashboard(request):
     today = timezone.now().date()
 
     # ✅ Unique visitors today
-    total_visitors_today = CapturedSnapshot.objects.filter(timestamp__date=today)
-    if user_pc_prefix:
-        total_visitors_today = total_visitors_today.filter(pc_name__startswith=user_pc_prefix)
-    total_visitors_today = total_visitors_today.values("visitor__face_id").distinct().count()
+    if request.user.is_superuser:
+        user_pc_prefix = request.GET.get('branch', None)
+        # Show total visitors across all branches for superadmin
+        if not user_pc_prefix:
+            total_visitors_today = CapturedSnapshot.objects.filter(
+                timestamp__date=today
+            ).values("visitor__face_id").distinct().count()
+        else:
+            total_visitors_today = CapturedSnapshot.objects.filter(
+                timestamp__date=today,
+                pc_name__startswith=user_pc_prefix
+            ).values("visitor__face_id").distinct().count()
+    else:
+        user_pc_prefix = get_user_pc_prefix(request.user)
+        total_visitors_today = CapturedSnapshot.objects.filter(
+            timestamp__date=today,
+            pc_name__startswith=user_pc_prefix
+        ).values("visitor__face_id").distinct().count()
 
     # ✅ Top emotion today
     emotion_counts_today = CapturedSnapshot.objects.filter(timestamp__date=today)
@@ -121,10 +135,10 @@ def dashboard(request):
     else:
         top_emotion_today = {"emotion": "none", "percentage": 0}
 
-    # ✅ Negative emotions today
+    # ✅ Negative emotions today (neutral is NOT negative)
     negative_emotions_today = sum(
         e["total"] for e in emotion_counts_today 
-        if e["emotion"] in ['sad', 'angry']
+        if e["emotion"] in ['sad', 'angry']  # neutral is not included
     )
     total_detections_today = sum(e["total"] for e in emotion_counts_today)
     negative_percentage_today = round((negative_emotions_today / total_detections_today * 100), 1) if total_detections_today > 0 else 0
@@ -231,7 +245,7 @@ def get_emotion_data(pc_prefix, start_date, end_date):
     top_emotion = max(emotion_counts.items(), key=lambda x: x[1])
     top_emotion_percentage = (top_emotion[1] / total_detections * 100) if total_detections > 0 else 0
     
-    # Calculate negative emotions percentage
+    # Calculate negative emotions percentage (neutral is NOT negative)
     negative_emotions = emotion_counts['sad'] + emotion_counts['angry']
     negative_percentage = (negative_emotions / total_detections * 100) if total_detections > 0 else 0
     
@@ -381,7 +395,7 @@ def calculate_negative_growth(pc_prefix):
     today = timezone.now().date()
     yesterday = today - timedelta(days=1)
     
-    # Get today's negative emotions
+    # Get today's negative emotions (neutral is NOT negative)
     query_today = CapturedSnapshot.objects.filter(
         timestamp__date=today,
         emotion__in=['sad', 'angry']
@@ -390,7 +404,7 @@ def calculate_negative_growth(pc_prefix):
         query_today = query_today.filter(pc_name__startswith=pc_prefix)
     today_negative = query_today.count()
     
-    # Get yesterday's negative emotions
+    # Get yesterday's negative emotions (neutral is NOT negative)
     query_yesterday = CapturedSnapshot.objects.filter(
         timestamp__date=yesterday,
         emotion__in=['sad', 'angry']
@@ -425,6 +439,22 @@ def branch_overview(request):
 
     branch_summaries = []
     chart_datasets = []
+
+    # Define a color palette for branches (can be extended as needed)
+    BRANCH_COLORS = [
+        {"border": "#3498db", "background": "rgba(52, 152, 219, 0.1)"},  # Blue
+        {"border": "#e74c3c", "background": "rgba(231, 76, 60, 0.1)"},   # Red
+        {"border": "#2ecc71", "background": "rgba(46, 204, 113, 0.1)"},  # Green
+        {"border": "#f39c12", "background": "rgba(243, 156, 18, 0.1)"},  # Orange
+        {"border": "#9b59b6", "background": "rgba(155, 89, 182, 0.1)"},  # Purple
+        {"border": "#1abc9c", "background": "rgba(26, 188, 156, 0.1)"},  # Teal
+        {"border": "#d35400", "background": "rgba(211, 84, 0, 0.1)"},    # Dark Orange
+        {"border": "#c0392b", "background": "rgba(192, 57, 43, 0.1)"},   # Dark Red
+        {"border": "#16a085", "background": "rgba(22, 160, 133, 0.1)"},  # Dark Teal
+        {"border": "#8e44ad", "background": "rgba(142, 68, 173, 0.1)"},  # Dark Purple
+        {"border": "#27ae60", "background": "rgba(39, 174, 96, 0.1)"},   # Dark Green
+        {"border": "#2980b9", "background": "rgba(41, 128, 185, 0.1)"},  # Dark Blue
+    ]
 
     for idx, branch in enumerate(branches):
         pc_prefix = branch.pc_prefix
@@ -462,6 +492,10 @@ def branch_overview(request):
             net = pos - neg
             trend_counts.append(net)
 
+        # Use branch index to get a unique color, cycle through palette if needed
+        color_idx = idx % len(BRANCH_COLORS)
+        branch_color = BRANCH_COLORS[color_idx]
+
         branch_summaries.append({
             'id': branch.id,
             'name': branch.name,
@@ -470,18 +504,18 @@ def branch_overview(request):
             'positivity_score': positivity_score,
             'positivity_percent': positivity_percent,
             'trend_counts': trend_counts,
-            'top_emotion_color': EMOTION_COLORS.get((top_emotion or "none").lower(), EMOTION_COLORS["none"]),
+            'color': branch_color,  # Store color for template use if needed
         })
-        color = EMOTION_COLORS.get((top_emotion or "none").lower(), EMOTION_COLORS["none"])
+
         chart_datasets.append({
             "label": branch.name,
             "data": trend_counts,
-            "borderColor": color["border"],
-            "backgroundColor": color["background"],
-            "pointBackgroundColor": color["border"],
+            "borderColor": branch_color["border"],
+            "backgroundColor": branch_color["background"],
+            "pointBackgroundColor": branch_color["border"],
             "pointBorderColor": "#fff",
             "pointHoverBackgroundColor": "#fff",
-            "pointHoverBorderColor": color["border"],
+            "pointHoverBorderColor": branch_color["border"],
             "pointRadius": 4,
             "pointHoverRadius": 6,
             "tension": 0.4,
@@ -528,9 +562,14 @@ def branch_detail(request, branch_id):
 
     pc_prefix = branch.pc_prefix
 
-    visits = CapturedSnapshot.objects.filter(pc_name__startswith=pc_prefix).order_by('-timestamp')[:20]
+    # Get recent visits
+    visits = CapturedSnapshot.objects.filter(
+        pc_name__startswith=pc_prefix
+    ).select_related('visitor').order_by('-timestamp')[:20]
+    
     total_emotions = CapturedSnapshot.objects.filter(pc_name__startswith=pc_prefix).count()
 
+    # Get emotion distribution
     from django.db.models import Count
     emotion_dist = (
         CapturedSnapshot.objects.filter(pc_name__startswith=pc_prefix)
@@ -538,31 +577,59 @@ def branch_detail(request, branch_id):
         .annotate(count=Count('id'))
         .order_by('-count')
     )
-    # Safely handle None values for emotion and assign color
-    emotion_labels = [(e['emotion'].title() if e['emotion'] else 'Unknown') for e in emotion_dist]
-    emotion_colors = [EMOTION_COLORS.get((e['emotion'] or "none").lower(), EMOTION_COLORS["none"])["border"] for e in emotion_dist]
-    emotion_counts = [e['count'] for e in emotion_dist]
+    
+    # Define emotion colors
+    EMOTION_COLORS = {
+        'happy': {'border': '#FFD166', 'background': 'rgba(255, 209, 102, 0.2)'},
+        'neutral': {'border': '#8A8A8A', 'background': 'rgba(138, 138, 138, 0.2)'},
+        'sad': {'border': '#118AB2', 'background': 'rgba(17, 138, 178, 0.2)'},
+        'angry': {'border': '#EF476F', 'background': 'rgba(239, 71, 111, 0.2)'},
+        'surprise': {'border': '#8338EC', 'background': 'rgba(131, 56, 236, 0.2)'},
+        'none': {'border': '#6C757D', 'background': 'rgba(108, 117, 125, 0.2)'},
+        'unknown': {'border': '#6C757D', 'background': 'rgba(108, 117, 125, 0.2)'}
+    }
 
-    # Hourly activity and positivity
-    # import json
-    # from datetime import datetime
-    # from collections import defaultdict
+    # Prepare emotion data for chart
+    emotion_labels = []
+    emotion_counts = []
+    emotion_colors = []
+    
+    for e in emotion_dist:
+        emotion_name = e['emotion'] or 'unknown'
+        emotion_labels.append(emotion_name.title())
+        emotion_counts.append(e['count'])
+        emotion_colors.append(EMOTION_COLORS.get(emotion_name.lower(), EMOTION_COLORS['unknown'])['border'])
 
+    # Hourly activity data
     hours = list(range(24))
     hourly_labels = [f"{h:02d}:00" for h in hours]
     hourly_visits = []
     hourly_positivity = []
 
     for hour in hours:
-        qs = CapturedSnapshot.objects.filter(
+        # Get visits for this hour
+        hour_visits = CapturedSnapshot.objects.filter(
             pc_name__startswith=pc_prefix,
             timestamp__hour=hour
         )
-        count = qs.count()
-        happy_count = qs.filter(emotion='happy').count()
-        positivity = (happy_count / count * 100) if count > 0 else 0
+        
+        count = hour_visits.count()
         hourly_visits.append(count)
+        
+        # Calculate positivity (percentage of happy emotions)
+        if count > 0:
+            happy_count = hour_visits.filter(emotion='happy').count()
+            positivity = (happy_count / count) * 100
+        else:
+            positivity = 0
+            
         hourly_positivity.append(round(positivity, 1))
+
+    # Debug info - you can remove this in production
+    print(f"Emotion labels: {emotion_labels}")
+    print(f"Emotion counts: {emotion_counts}")
+    print(f"Hourly visits: {hourly_visits}")
+    print(f"Hourly positivity: {hourly_positivity}")
 
     context = {
         'branch': branch,
@@ -576,6 +643,7 @@ def branch_detail(request, branch_id):
         'hourly_visits': json.dumps(hourly_visits),
         'hourly_positivity': json.dumps(hourly_positivity),
     }
+    
     return render(request, 'monitor/branch_detail.html', context)
 
 @login_required
