@@ -34,8 +34,6 @@ class CustomUser(AbstractUser):
     )
 
     def save(self, *args, **kwargs):
-        if self.is_superuser:
-            self.branch = None
         super().save(*args, **kwargs)
 
 
@@ -91,5 +89,7 @@ class CapturedSnapshot(models.Model):
         db_table = 'captured_snapshots'
 
     def __str__(self):
+        return f"Visitor {self.visitor.face_id} ({self.emotion}) on {self.pc_name}"
+        return f"Visitor {self.visitor.face_id} ({self.emotion}) on {self.pc_name}"
         return f"Visitor {self.visitor.face_id} ({self.emotion}) on {self.pc_name}"
         return f"Visitor {self.visitor.face_id} ({self.emotion}) on {self.pc_name}"
