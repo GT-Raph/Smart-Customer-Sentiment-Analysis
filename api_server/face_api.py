@@ -1,5 +1,5 @@
-from fastapi import FastAPI, File, UploadFile, Form, Depends, Header, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, File, UploadFile, Form, Depends, Header, HTTPException, status, Request
+from fastapi.responses import JSONResponse, FileResponse
 import cv2
 import numpy as np
 import os
@@ -74,6 +74,23 @@ async def verify_api_key(x_api_key: str = Header(None), authorization: str = Hea
 
 app = FastAPI(title="Face Recognition API")
 
+# New: serve saved images (safe path check to prevent traversal)
+@app.get("/images/{filename}", name="serve_image")
+async def serve_image(filename: str):
+    # serve files from either CAPTURED_FACES_DIR or PENDING_JOBS_DIR (safe checks)
+    safe_name = os.path.basename(filename)
+    candidates = [
+        os.path.abspath(os.path.join(PENDING_JOBS_DIR, safe_name)),
+        os.path.abspath(os.path.join(CAPTURED_FACES_DIR, safe_name))
+    ]
+    allowed_dirs = [os.path.abspath(PENDING_JOBS_DIR), os.path.abspath(CAPTURED_FACES_DIR)]
+    for file_path in candidates:
+        # prevent traversal and ensure file lies in one of the allowed dirs
+        if any(file_path.startswith(d + os.sep) or file_path == d for d in allowed_dirs):
+            if os.path.exists(file_path):
+                return FileResponse(path=file_path, media_type="image/jpeg", filename=safe_name)
+    raise HTTPException(status_code=404, detail="Not found")
+
 # New: lightweight health endpoint for pre-flight checks
 @app.get("/health")
 async def health():
@@ -81,7 +98,7 @@ async def health():
 
 # Protect upload-face with the API key dependency
 @app.post("/upload-face")
-async def upload_face(file: UploadFile = File(...), pc_name: str = Form(default=PC_NAME), _auth=Depends(verify_api_key)):
+async def upload_face(request: Request, file: UploadFile = File(...), pc_name: str = Form(default=PC_NAME), _auth=Depends(verify_api_key)):
     try:
         # Decode the uploaded image
         image_data = await file.read()
@@ -120,36 +137,55 @@ async def upload_face(file: UploadFile = File(...), pc_name: str = Form(default=
 
             timestamp = datetime.now()
             filename = f"{face_id}_{timestamp.strftime('%Y%m%d_%H%M%S')}.jpg"
-            path = os.path.join(CAPTURED_FACES_DIR, filename)
-            cv2.imwrite(path, face_img_clahe)
 
-            # Save to DB
+            # Save image into the PENDING_JOBS_DIR (per request)
+            path = os.path.join(PENDING_JOBS_DIR, filename)
+            try:
+                cv2.imwrite(path, face_img_clahe)
+            except Exception as e:
+                # fallback: try saving into CAPTURED_FACES_DIR
+                fallback_path = os.path.join(CAPTURED_FACES_DIR, filename)
+                cv2.imwrite(fallback_path, face_img_clahe)
+                path = fallback_path
+
+            # Build an accessible image URL (relative to this server)
+            try:
+                image_url = request.url_for("serve_image", filename=filename)
+            except Exception:
+                image_url = f"/images/{filename}"
+            # ensure image_url is JSON-serializable (convert URL object to string)
+            try:
+                image_url = str(image_url)
+            except Exception:
+                image_url = f"/images/{filename}"
+
+            # Save to DB (path refers to pending_jobs location)
             save_snapshot_to_db(db, face_id, pc_name, path, timestamp, embedding)
 
-            # New: append a compact audit/log entry so clients can verify server-side reception
+            # Write received_images.log with image_url and path
             try:
                 log_entry = {
                     "timestamp": timestamp.isoformat(),
                     "pc_name": pc_name,
                     "face_id": face_id,
                     "matched": bool(matched),
-                    "image_path": path
+                    "image_path": path,
+                    "image_url": image_url
                 }
                 with open("received_images.log", "a", encoding="utf-8") as lf:
                     lf.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
             except Exception as log_e:
-                # non-fatal; print small warning on server console
                 print(f"⚠️ Failed to write received_images.log: {log_e}")
 
-            # New: create a small JSON job file for downstream processing (process-faces.ipynb can watch this directory)
+            # Create job JSON in pending_jobs (image_path references file in pending_jobs)
             try:
                 job = {
                     "job_id": str(ulid.new()),
                     "face_id": face_id,
                     "pc_name": pc_name,
                     "image_path": path,
+                    "image_url": image_url,
                     "timestamp": timestamp.isoformat(),
-                    # minimal embedding reference - do not include huge arrays unless needed
                     "embedding_saved": embedding is not None
                 }
                 job_filename = f"{timestamp.strftime('%Y%m%d_%H%M%S')}_{face_id}.json"
@@ -165,7 +201,8 @@ async def upload_face(file: UploadFile = File(...), pc_name: str = Form(default=
                 "matched": matched,
                 "message": msg,
                 "image_path": path,
-                "job_file": job_path  # may be None if job creation failed
+                "image_url": image_url,
+                "job_file": job_path
             })
 
         db.close()
