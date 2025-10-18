@@ -2,3 +2,12 @@
 emotion_detection_system/captured_faces/
 emotion_detection_system/known_faces/
 emotion_detection_system/Process/
+
+# Ignore repository-level captured_faces and their contents
+/captured_faces/
+/emotion_detection_system/captured_faces/
+/captured_faces/**/*
+
+# optional: ignore logs and local runtime files
+received_images.log
+api_responses.log
