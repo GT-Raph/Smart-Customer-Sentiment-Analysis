@@ -143,7 +143,6 @@ async def upload_face(request: Request, file: UploadFile = File(...), pc_name: s
             try:
                 cv2.imwrite(path, face_img_clahe)
             except Exception as e:
-                # fallback: try saving into CAPTURED_FACES_DIR
                 fallback_path = os.path.join(CAPTURED_FACES_DIR, filename)
                 cv2.imwrite(fallback_path, face_img_clahe)
                 path = fallback_path
@@ -153,7 +152,6 @@ async def upload_face(request: Request, file: UploadFile = File(...), pc_name: s
                 image_url = request.url_for("serve_image", filename=filename)
             except Exception:
                 image_url = f"/images/{filename}"
-            # ensure image_url is JSON-serializable (convert URL object to string)
             try:
                 image_url = str(image_url)
             except Exception:
