@@ -13,12 +13,12 @@ import json  # added for logging
 try:
     # preferred when the module is part of a package
     from .config import CAPTURED_FACES_DIR, PC_NAME
-    from .db_utils import get_db, get_embeddings_db, save_snapshot_to_db
+    from .db_utils import get_db, get_embeddings_db, save_snapshot_to_db, ensure_tables_exist
     from .face_utils import get_face_embedding, match_face_id, enhance_face
 except Exception:
     # fallback when running the file as a top-level module (common with uvicorn)
     from config import CAPTURED_FACES_DIR, PC_NAME
-    from db_utils import get_db, get_embeddings_db, save_snapshot_to_db
+    from db_utils import get_db, get_embeddings_db, save_snapshot_to_db, ensure_tables_exist
     from face_utils import get_face_embedding, match_face_id, enhance_face
 
 # Load API key from config (if provided) or environment variable
@@ -98,7 +98,12 @@ async def health():
 
 # Protect upload-face with the API key dependency
 @app.post("/upload-face")
-async def upload_face(request: Request, file: UploadFile = File(...), pc_name: str = Form(default=PC_NAME), _auth=Depends(verify_api_key)):
+async def upload_face(
+    request: Request,
+    file: UploadFile = File(...),
+    pc_name: str = Form(None),
+    _auth=Depends(verify_api_key)
+):
     try:
         # Decode the uploaded image
         image_data = await file.read()
@@ -106,6 +111,7 @@ async def upload_face(request: Request, file: UploadFile = File(...), pc_name: s
         frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
         db = get_db()
+        ensure_tables_exist(db)
         cursor = db.cursor()
         known = get_embeddings_db(cursor)
         cursor.close()

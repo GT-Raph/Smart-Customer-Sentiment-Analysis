@@ -11,3 +11,5 @@ emotion_detection_system/Process/
 # optional: ignore logs and local runtime files
 received_images.log
 api_responses.log
+
+.venv/

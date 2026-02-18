@@ -1,11 +1,58 @@
-import mysql.connector
 import json
-import numpy as np
 from datetime import datetime
+
+import numpy as np
+import psycopg2
+
 from .config import DB_CONFIG
 
+def _normalize_db_config(cfg):
+    # Accept either a Django-style wrapper (with "default") or a flat mapping.
+    if isinstance(cfg, dict) and "default" in cfg:
+        cfg = cfg["default"]
+    if not isinstance(cfg, dict):
+        raise ValueError("DB_CONFIG must be a dict or include a 'default' dict")
+
+    # Map common Django-style keys to psycopg2 parameters.
+    dbname = cfg.get("NAME")
+    user = cfg.get("USER")
+    password = cfg.get("PASSWORD")
+    host = cfg.get("HOST")
+    port = cfg.get("PORT")
+    sslmode = None
+    options = cfg.get("OPTIONS") or {}
+    if isinstance(options, dict):
+        sslmode = options.get("sslmode")
+
+    return {
+        "dbname": dbname,
+        "user": user,
+        "password": password,
+        "host": host,
+        "port": port,
+        "sslmode": sslmode or "require",
+    }
+
 def get_db():
-    return mysql.connector.connect(**DB_CONFIG)
+    cfg = _normalize_db_config(DB_CONFIG)
+    return psycopg2.connect(**cfg)
+
+def ensure_tables_exist(db):
+    cur = db.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS captured_snapshots (
+            id SERIAL PRIMARY KEY,
+            face_id VARCHAR(128) NOT NULL,
+            pc_name VARCHAR(128),
+            image_path TEXT NOT NULL,
+            timestamp TIMESTAMP NOT NULL,
+            embedding TEXT
+        );
+        """
+    )
+    db.commit()
+    cur.close()
 
 def get_embeddings_db(cursor):
     cursor.execute("SELECT face_id, embedding FROM captured_snapshots WHERE embedding IS NOT NULL")
