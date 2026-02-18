@@ -32,7 +32,7 @@ This project monitors a folder for facial images, detects emotions, identifies w
 - Recommended: 8+ GB RAM for CPU inference; more recommended for training/large workloads.
 
 ### Python
-- Python 3.7 or newer (3.8/3.9/3.10 recommended).
+- Python 3.10.11 recommended.
 - Use a virtual environment (venv, pipenv, or conda).
 
 ### Machine Learning / Libraries
