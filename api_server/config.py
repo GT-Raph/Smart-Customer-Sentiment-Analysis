@@ -1,12 +1,14 @@
 import os
 import socket
-
 from flask import session
 
 # General
 CAPTURED_FACES_DIR = os.path.join(os.path.dirname(__file__), "..", "captured_faces")
 EMBEDDING_MODEL = "ArcFace"
 MATCH_THRESHOLD = 0.45
+
+API_KEY_HEADER = "X-API-Key"
+API_KEY = os.getenv("API_KEY", None)
 
 # PostgreSQL
 DB_CONFIG = {
