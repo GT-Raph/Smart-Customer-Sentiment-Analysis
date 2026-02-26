@@ -1,25 +1,79 @@
 from fastapi import FastAPI, File, UploadFile, Form, Depends, Header, HTTPException, status, Request
 from fastapi.responses import JSONResponse, FileResponse
+from fastapi.concurrency import run_in_threadpool
 import cv2
 import numpy as np
 import os
-from datetime import datetime
 import ulid
+import logging
 import json
+from datetime import datetime
 from deepface import DeepFace
+from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
-# Safe imports (works as package or standalone)
+# Safe imports
 try:
-    from .config import CAPTURED_FACES_DIR, PC_NAME, API_KEY
-    from .db_utils import get_db, save_snapshot_to_db, ensure_tables_exist, get_embeddings_db
+    from .config import CAPTURED_FACES_DIR, API_KEY
+    from .db_utils import (
+        get_db,
+        save_snapshot_to_db,
+        ensure_tables_exist,
+        get_embeddings_db,
+        create_processing_job,
+        fetch_unprocessed_jobs,
+        mark_job_completed,
+        mark_job_failed
+    )
     from .face_utils import match_face_id, enhance_face
 except:
-    from config import CAPTURED_FACES_DIR, PC_NAME, API_KEY
-    from db_utils import get_db, save_snapshot_to_db, ensure_tables_exist, get_embeddings_db
+    from config import CAPTURED_FACES_DIR, API_KEY
+    from db_utils import (
+        get_db,
+        save_snapshot_to_db,
+        ensure_tables_exist,
+        get_embeddings_db,
+        create_processing_job,
+        fetch_unprocessed_jobs,
+        mark_job_completed,
+        mark_job_failed
+    )
     from face_utils import match_face_id, enhance_face
 
 
-app = FastAPI(title="Face Recognition + Emotion API")
+# =========================================================
+# 🏦 STRUCTURED LOGGING (BANK AUDIT READY)
+# =========================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s"
+)
+
+logger = logging.getLogger("face_api")
+
+
+# =========================================================
+# 🚀 APP INIT
+# =========================================================
+
+app = FastAPI(title="Bank Face Recognition + Emotion API")
+
+os.makedirs(CAPTURED_FACES_DIR, exist_ok=True)
+
+# Thread pool for background processing
+executor = ThreadPoolExecutor(max_workers=4)
+
+# =========================================================
+# 🧠 PRELOAD MODELS (CRITICAL FOR PERFORMANCE)
+# =========================================================
+
+logger.info("Loading DeepFace models...")
+
+emotion_model = DeepFace.build_model("Emotion")
+embedding_model = DeepFace.build_model("Facenet")
+
+logger.info("Models loaded successfully.")
 
 
 # =========================================================
@@ -27,8 +81,8 @@ app = FastAPI(title="Face Recognition + Emotion API")
 # =========================================================
 
 async def verify_api_key(
-    x_api_key: str = Header(None),
-    authorization: str = Header(None)
+    x_api_key: Optional[str] = Header(None),
+    authorization: Optional[str] = Header(None)
 ):
     if not API_KEY:
         return True
@@ -41,24 +95,11 @@ async def verify_api_key(
         if token == API_KEY:
             return True
 
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Unauthorized"
-    )
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
 
 
 # =========================================================
-# 📁 DIRECTORY SETUP
-# =========================================================
-
-PENDING_JOBS_DIR = os.path.join(CAPTURED_FACES_DIR, "pending_jobs")
-
-os.makedirs(CAPTURED_FACES_DIR, exist_ok=True)
-os.makedirs(PENDING_JOBS_DIR, exist_ok=True)
-
-
-# =========================================================
-# 🖼️ IMAGE SERVING
+# 📁 IMAGE SERVING
 # =========================================================
 
 @app.get("/images/{filename}", name="serve_image")
@@ -82,121 +123,67 @@ async def health():
 
 
 # =========================================================
-# 🚀 MAIN FACE UPLOAD ENDPOINT
+# 🧵 BACKGROUND PROCESSING
 # =========================================================
 
-@app.post("/upload-face")
-async def upload_face(
-    request: Request,
-    file: UploadFile = File(...),
-    pc_name: str = Form(None),
-    _auth=Depends(verify_api_key)
-):
+def process_job(job):
+    db = get_db()
+    cursor = db.cursor()
 
     try:
-        # --------------------------------------------------
-        # 1️⃣ Decode Image
-        # --------------------------------------------------
-        image_bytes = await file.read()
-        np_array = np.frombuffer(image_bytes, np.uint8)
-        frame = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
+        logger.info(f"Processing job {job['job_id']}")
 
+        image_path = job["image_path"]
+        pc_name = job["pc_name"]
+
+        frame = cv2.imread(image_path)
         if frame is None:
-            return JSONResponse(
-                {"status": "error", "message": "Invalid image"},
-                status_code=400
-            )
+            raise Exception("Invalid image during processing")
 
-        # --------------------------------------------------
-        # 2️⃣ Extract Faces
-        # --------------------------------------------------
         faces = DeepFace.extract_faces(
             img_path=frame,
             enforce_detection=False
         )
 
         if not faces:
-            return JSONResponse(
-                {"status": "error", "message": "No face detected"},
-                status_code=400
-            )
+            raise Exception("No face detected")
 
-        db = get_db()
-        ensure_tables_exist(db)
-
-        cursor = db.cursor()
         known_embeddings = get_embeddings_db(cursor)
-        cursor.close()
 
-        results = []
-
-        # --------------------------------------------------
-        # 3️⃣ Process Each Face
-        # --------------------------------------------------
         for face in faces:
-
             facial_area = face["facial_area"]
-            x, y, w, h = (
-                facial_area["x"],
-                facial_area["y"],
-                facial_area["w"],
-                facial_area["h"],
-            )
+            x, y, w, h = facial_area["x"], facial_area["y"], facial_area["w"], facial_area["h"]
 
             face_img = frame[y:y+h, x:x+w]
             face_img = enhance_face(face_img)
 
-            # --------------------------------------------------
-            # 4️⃣ Compute Embedding
-            # --------------------------------------------------
+            # Embedding
             embedding_obj = DeepFace.represent(
                 img_path=face_img,
                 model_name="Facenet",
+                model=embedding_model,
                 enforce_detection=False
             )
-
-            if not embedding_obj:
-                continue
 
             embedding = embedding_obj[0]["embedding"]
 
-            # --------------------------------------------------
-            # 5️⃣ Match Face
-            # --------------------------------------------------
             match = match_face_id(embedding, known_embeddings)
 
-            if match:
-                face_id = match
-                matched = True
-            else:
-                face_id = str(ulid.new())
-                matched = False
+            face_id = match if match else str(ulid.new())
 
-            # --------------------------------------------------
-            # 6️⃣ Detect Emotion
-            # --------------------------------------------------
-            emotion_analysis = DeepFace.analyze(
+            # Emotion
+            emotion_result = DeepFace.analyze(
                 img_path=face_img,
                 actions=["emotion"],
+                models={"emotion": emotion_model},
                 enforce_detection=False
             )
 
-            emotion = emotion_analysis[0]["dominant_emotion"]
+            emotion = emotion_result[0]["dominant_emotion"]
+            confidence = emotion_result[0]["emotion"][emotion]
 
-            # --------------------------------------------------
-            # 7️⃣ Save Image
-            # --------------------------------------------------
             timestamp = datetime.now()
-            filename = f"{face_id}_{timestamp.strftime('%Y%m%d_%H%M%S')}.jpg"
-            image_path = os.path.join(CAPTURED_FACES_DIR, filename)
 
-            cv2.imwrite(image_path, face_img)
-
-            image_url = str(request.url_for("serve_image", filename=filename))
-
-            # --------------------------------------------------
-            # 8️⃣ Save to Database
-            # --------------------------------------------------
             save_snapshot_to_db(
                 db=db,
                 face_id=face_id,
@@ -204,46 +191,77 @@ async def upload_face(
                 image_path=image_path,
                 timestamp=timestamp,
                 embedding=embedding,
-                emotion=emotion
+                emotion=emotion,
+                confidence=confidence
             )
 
-            # --------------------------------------------------
-            # 9️⃣ Create Pending Job JSON
-            # --------------------------------------------------
-            job_data = {
-                "job_id": str(ulid.new()),
-                "face_id": face_id,
-                "pc_name": pc_name,
-                "image_path": image_path,
-                "image_url": image_url,
-                "emotion": emotion,
-                "matched": matched,
-                "timestamp": timestamp.isoformat()
-            }
+        mark_job_completed(db, job["job_id"])
+        logger.info(f"Job {job['job_id']} completed")
 
-            job_filename = f"{timestamp.strftime('%Y%m%d_%H%M%S')}_{face_id}.json"
-            job_path = os.path.join(PENDING_JOBS_DIR, job_filename)
+    except Exception as e:
+        logger.error(f"Job {job['job_id']} failed: {str(e)}")
+        mark_job_failed(db, job["job_id"], str(e))
 
-            with open(job_path, "w", encoding="utf-8") as f:
-                json.dump(job_data, f, indent=2)
+    finally:
+        cursor.close()
+        db.close()
 
-            results.append({
-                "face_id": face_id,
-                "matched": matched,
-                "emotion": emotion,
-                "image_url": image_url
-            })
+
+# =========================================================
+# 🚀 UPLOAD ENDPOINT (FAST RESPONSE)
+# =========================================================
+
+@app.post("/upload-face")
+async def upload_face(
+    request: Request,
+    file: UploadFile = File(...),
+    pc_name: str = Form(...),
+    _auth=Depends(verify_api_key)
+):
+
+    try:
+        image_bytes = await file.read()
+        np_array = np.frombuffer(image_bytes, np.uint8)
+        frame = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
+
+        if frame is None:
+            raise HTTPException(status_code=400, detail="Invalid image")
+
+        job_id = str(ulid.new())
+        timestamp = datetime.now()
+
+        filename = f"{job_id}.jpg"
+        image_path = os.path.join(CAPTURED_FACES_DIR, filename)
+
+        cv2.imwrite(image_path, frame)
+
+        db = get_db()
+        ensure_tables_exist(db)
+
+        create_processing_job(
+            db=db,
+            job_id=job_id,
+            pc_name=pc_name,
+            image_path=image_path,
+            timestamp=timestamp
+        )
 
         db.close()
 
+        # Submit to background thread
+        executor.submit(process_job, {
+            "job_id": job_id,
+            "pc_name": pc_name,
+            "image_path": image_path
+        })
+
+        logger.info(f"Job {job_id} accepted from {pc_name}")
+
         return {
-            "status": "success",
-            "results": results
+            "status": "accepted",
+            "job_id": job_id
         }
 
     except Exception as e:
-        print("API ERROR:", e)
-        return JSONResponse(
-            {"status": "error", "message": str(e)},
-            status_code=500
-        )
+        logger.error(f"Upload failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Processing error")
