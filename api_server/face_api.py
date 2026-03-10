@@ -232,14 +232,61 @@ def startup_event():
 # UPLOAD ENDPOINT
 # =====================================================
 
+# @app.post("/upload-face")
+# async def upload_face(
+#     request: Request,
+#     file: UploadFile = File(...),
+#     pc_name: str = Form(...),
+#     _auth=Depends(verify_api_key),
+# ):
+#     try:
+#         data = await file.read()
+#         arr = np.frombuffer(data, np.uint8)
+#         frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+#         if frame is None:
+#             raise HTTPException(status_code=400, detail="Invalid image")
+
+#         job_id = str(ulid.new())
+#         filename = f"{job_id}.jpg"
+#         path = os.path.join(CAPTURED_FACES_DIR, filename)
+
+#         saved = cv2.imwrite(path, frame)
+#         if not saved:
+#             raise HTTPException(status_code=500, detail="Failed to save image")
+
+#         job = {
+#             "job_id": job_id,
+#             "pc_name": pc_name,
+#             "image_path": path,
+#         }
+
+#         queue.enqueue(process_job, job)
+
+#         logger.info(f"Job queued {job_id}")
+
+#         return {
+#             "status": "queued",
+#             "job_id": job_id,
+#         }
+
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Upload failed: {str(e)}")
+#         raise HTTPException(status_code=500, detail="Processing error")
+
 @app.post("/upload-face")
 async def upload_face(
-    request: Request,
     file: UploadFile = File(...),
     pc_name: str = Form(...),
     _auth=Depends(verify_api_key),
 ):
+    db = None
+    cur = None
+
     try:
+        # Convert uploaded file to OpenCV image
         data = await file.read()
         arr = np.frombuffer(data, np.uint8)
         frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
@@ -247,31 +294,47 @@ async def upload_face(
         if frame is None:
             raise HTTPException(status_code=400, detail="Invalid image")
 
+        # Generate unique job id
         job_id = str(ulid.new())
+
         filename = f"{job_id}.jpg"
         path = os.path.join(CAPTURED_FACES_DIR, filename)
 
-        saved = cv2.imwrite(path, frame)
-        if not saved:
-            raise HTTPException(status_code=500, detail="Failed to save image")
+        # Save image
+        cv2.imwrite(path, frame)
 
-        job = {
-            "job_id": job_id,
-            "pc_name": pc_name,
-            "image_path": path,
-        }
+        # Extract branch code from PC name
+        branch_code = pc_name[:6]
 
-        queue.enqueue(process_job, job)
+        # Save to database
+        db = get_db()
+        cur = db.cursor()
 
-        logger.info(f"Job queued {job_id}")
+        cur.execute(
+            """
+            INSERT INTO captured_snapshots
+            (branch_code, pc_name, image_path, processed)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (branch_code, pc_name, path, False),
+        )
+
+        db.commit()
+
+        logger.info(f"Image stored from {pc_name}")
 
         return {
-            "status": "queued",
+            "status": "stored",
             "job_id": job_id,
+            "image_path": path
         }
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Upload failed: {str(e)}")
-        raise HTTPException(status_code=500, detail="Processing error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        if cur:
+            cur.close()
+        if db:
+            db.close()
