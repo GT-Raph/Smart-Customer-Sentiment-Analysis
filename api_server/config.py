@@ -1,73 +1,63 @@
 import os
-import socket
+from pathlib import Path
 
-# -------------------------------------------------
-# DIRECTORIES
-# -------------------------------------------------
+from dotenv import load_dotenv
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-CAPTURED_FACES_DIR = os.getenv(
-    "CAPTURED_FACES_DIR",
-    os.path.join(BASE_DIR, "..", "captured_faces")
+load_dotenv()
+
+
+PROJECT_ROOT = (
+    Path(__file__).resolve().parent.parent
 )
 
-os.makedirs(CAPTURED_FACES_DIR, exist_ok=True)
+CAPTURED_FACES_ROOT = Path(
+    os.getenv(
+        "CAPTURED_FACES_ROOT",
+        PROJECT_ROOT / "captured_faces",
+    )
+).resolve()
+
+CAPTURED_FACES_ROOT.mkdir(
+    parents=True,
+    exist_ok=True,
+)
 
 
-# -------------------------------------------------
-# API SECURITY
-# -------------------------------------------------
+EMBEDDING_MODEL = os.getenv(
+    "EMBEDDING_MODEL",
+    "ArcFace",
+)
 
-API_KEY_HEADER = "X-API-Key"
+MATCH_THRESHOLD = float(
+    os.getenv(
+        "MATCH_THRESHOLD",
+        "0.45",
+    )
+)
 
-# Read API key from environment variable
-API_KEY = os.getenv("FACE_API_KEY")
+MAX_UPLOAD_BYTES = int(
+    os.getenv(
+        "MAX_UPLOAD_BYTES",
+        str(5 * 1024 * 1024),
+    )
+)
 
-
-# -------------------------------------------------
-# FACE RECOGNITION SETTINGS
-# -------------------------------------------------
-
-EMBEDDING_MODEL = "ArcFace"
-MATCH_THRESHOLD = 0.45
-
-
-# -------------------------------------------------
-# DATABASE CONFIG
-# (Better to use environment variables in production)
-# -------------------------------------------------
-
-# DB_CONFIG = {
-#     "default": {
-#         "ENGINE": "django.db.backends.postgresql",
-#         "NAME": os.getenv("DB_NAME", "postgres"),
-#         "USER": os.getenv("DB_USER", ""),
-#         "PASSWORD": os.getenv("DB_PASSWORD"),
-#         "HOST": os.getenv("DB_HOST", ""),
-#         "PORT": os.getenv("DB_PORT", "5432"),
-#         "OPTIONS": {
-#             "sslmode": "require"
-#         },
-#     }
-# }
-
-DB_CONFIG = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "postgres",
-        "USER": "postgres.uqkodzbevzooiqdxnfjq",
-        "PASSWORD": "Z9/Fu*nC$mNTs/+",
-        "HOST": "aws-1-eu-central-1.pooler.supabase.com",
-        "PORT": "5432",
-        "OPTIONS": {
-            "sslmode": "require"
-        },
-    }
+ALLOWED_IMAGE_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
 }
 
-# -------------------------------------------------
-# SYSTEM INFO
-# -------------------------------------------------
 
-PC_NAME = socket.gethostname()
+DB_CONFIG = {
+    "dbname": os.getenv("DB_NAME"),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
+    "host": os.getenv("DB_HOST"),
+    "port": os.getenv("DB_PORT", "5432"),
+    "sslmode": os.getenv(
+        "DB_SSLMODE",
+        "require",
+    ),
+}

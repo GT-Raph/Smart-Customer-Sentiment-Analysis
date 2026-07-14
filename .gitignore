@@ -13,3 +13,4 @@ received_images.log
 api_responses.log
 
 .venv/
+.env

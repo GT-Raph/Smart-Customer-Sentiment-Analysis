@@ -1,705 +1,1080 @@
-from django.http import HttpResponse
-from django.db.models import Count
-from django.utils import timezone
-from django.shortcuts import render, redirect
-from django.contrib import messages
-from django.contrib.auth import logout
-from django.contrib.auth.decorators import login_required
-# from . import models
-from .models import Branch, CapturedSnapshot
-from datetime import timedelta, datetime
-import json
-from django.core.exceptions import PermissionDenied
-from django.contrib.auth import authenticate, login
-from django.db.models import Count
+import csv
 import json
 from datetime import datetime, timedelta
+from pathlib import Path
+from .models import UserPreference
+from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required
+from django.db.models import Count
+from django.http import FileResponse, Http404, HttpResponse
+from django.shortcuts import redirect, render
+from django.utils import timezone
+
+from .tenant import (
+    get_visible_branch_or_404,
+    require_bank_admin,
+    visible_branches,
+    visible_snapshots,
+)
 
 
-# Use the recommended emotion color mapping everywhere
+EMOTIONS = (
+    "happy",
+    "neutral",
+    "sad",
+    "angry",
+    "surprise",
+)
+
 EMOTION_COLORS = {
-    "happy":   {"border": "#FFD166", "background": "rgba(255,209,102,0.15)"},   # Sunshine Yellow
-    "sad":     {"border": "#118AB2", "background": "rgba(17,138,178,0.15)"},    # Cool Blue
-    "angry":   {"border": "#EF476F", "background": "rgba(239,71,111,0.15)"},    # Fiery Red
-    "neutral": {"border": "#8A8A8A", "background": "rgba(138,138,138,0.15)"},   # Balanced Gray
-    "surprise":{"border": "#8338EC", "background": "rgba(131,56,236,0.15)"},    # Vibrant Purple
-    "none":    {"border": "#8A8A8A", "background": "rgba(138,138,138,0.15)"},   # fallback to gray
-    "unknown": {"border": "#8A8A8A", "background": "rgba(138,138,138,0.15)"},   # fallback to gray
+    "happy": "#FFD166",
+    "neutral": "#8A8A8A",
+    "sad": "#118AB2",
+    "angry": "#EF476F",
+    "surprise": "#8338EC",
+    "none": "#6C757D",
 }
 
 
 def login_view(request):
-    if request.method == "POST":
-        username = request.POST.get("username")
-        password = request.POST.get("password")
+    if request.user.is_authenticated:
+        return redirect("dashboard")
 
-        user = authenticate(request, username=username, password=password)
+    if request.method == "POST":
+        username = request.POST.get(
+            "username",
+            "",
+        ).strip()
+
+        password = request.POST.get(
+            "password",
+            "",
+        )
+
+        user = authenticate(
+            request,
+            username=username,
+            password=password,
+        )
+
         if user is not None:
             login(request, user)
-            return redirect("dashboard")  # Redirect to dashboard after successful login
-        else:
-            messages.error(request, "Invalid username or password.")
 
-    return render(request, "registration/login.html")  # Always render login page
+            return redirect(
+                request.GET.get("next")
+                or "dashboard"
+            )
+
+        messages.error(
+            request,
+            "Invalid username or password.",
+        )
+
+    return render(
+        request,
+        "registration/login.html",
+    )
+
 
 def logout_view(request):
     logout(request)
-    messages.success(request, "You have been logged out successfully.")
-    return redirect('login')
+    return redirect("login")
+
+
+def _date_window(value):
+    end = timezone.now()
+
+    days = {
+        "day": 1,
+        "week": 7,
+        "month": 30,
+        "14days": 14,
+    }.get(value, 14)
+
+    if days == 1:
+        start = end.replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+    else:
+        start = end - timedelta(
+            days=days - 1
+        )
+
+    return start, end, days
+
+
+def _scoped_query(request):
+    queryset = visible_snapshots(
+        request.user
+    )
+
+    selected_branch = None
+
+    if request.user.branch_id:
+        selected_branch = (
+            request.user.branch
+        )
+
+        return (
+            queryset.filter(
+                branch_id=(
+                    request.user.branch_id
+                )
+            ),
+            selected_branch,
+        )
+
+    branch_was_supplied = (
+        "branch" in request.GET
+        or "branch" in request.POST
+    )
+
+    branch_id = (
+        request.GET.get("branch")
+        or request.POST.get("branch")
+    )
+
+    if (
+        not branch_was_supplied
+        and request.method == "GET"
+    ):
+        preferences, _ = (
+            UserPreference.objects
+            .get_or_create(
+                user=request.user
+            )
+        )
+
+        branch_id = (
+            preferences.default_branch_id
+        )
+
+    if branch_id:
+        selected_branch = (
+            visible_branches(
+                request.user
+            )
+            .filter(pk=branch_id)
+            .first()
+        )
+
+        if selected_branch:
+            queryset = queryset.filter(
+                branch_id=(
+                    selected_branch.id
+                )
+            )
+
+    return (
+        queryset,
+        selected_branch,
+    )
+
+
+def _emotion_counts(queryset):
+    counts = {
+        emotion: 0
+        for emotion in EMOTIONS
+    }
+
+    grouped = (
+        queryset
+        .exclude(emotion="")
+        .values("emotion")
+        .annotate(total=Count("id"))
+    )
+
+    for item in grouped:
+        emotion = item["emotion"]
+
+        if emotion in counts:
+            counts[emotion] = item["total"]
+
+    return counts
+
+
+def _trend_data(queryset, start, end):
+    labels = []
+
+    values = {
+        emotion: []
+        for emotion in EMOTIONS
+    }
+
+    current = start.date()
+
+    while current <= end.date():
+        labels.append(
+            current.strftime("%Y-%m-%d")
+        )
+
+        daily_queryset = queryset.filter(
+            timestamp__date=current
+        )
+
+        grouped = {
+            row["emotion"]: row["total"]
+            for row in (
+                daily_queryset
+                .values("emotion")
+                .annotate(total=Count("id"))
+            )
+        }
+
+        for emotion in EMOTIONS:
+            values[emotion].append(
+                grouped.get(emotion, 0)
+            )
+
+        current += timedelta(days=1)
+
+    datasets = [
+        {
+            "label": emotion.title(),
+            "data": values[emotion],
+            "backgroundColor": (
+                EMOTION_COLORS[emotion] + "80"
+            ),
+            "borderColor": EMOTION_COLORS[emotion],
+            "borderWidth": 2,
+        }
+        for emotion in EMOTIONS
+    ]
+
+    return labels, datasets
+
+
+def _hourly_data(queryset, target_date):
+    labels = [
+        f"{hour:02d}:00"
+        for hour in range(24)
+    ]
+
+    result = {
+        emotion: [0] * 24
+        for emotion in EMOTIONS
+    }
+
+    grouped = (
+        queryset
+        .filter(timestamp__date=target_date)
+        .values(
+            "timestamp__hour",
+            "emotion",
+        )
+        .annotate(total=Count("id"))
+    )
+
+    for row in grouped:
+        hour = row["timestamp__hour"]
+        emotion = row["emotion"]
+
+        if (
+            emotion in result
+            and hour is not None
+        ):
+            result[emotion][hour] = row["total"]
+
+    result["labels"] = labels
+
+    return result
+
+
+def _growth(queryset, negative=False):
+    today = timezone.localdate()
+    yesterday = today - timedelta(days=1)
+
+    if negative:
+        queryset = queryset.filter(
+            emotion__in=("sad", "angry")
+        )
+
+        today_count = queryset.filter(
+            timestamp__date=today
+        ).count()
+
+        yesterday_count = queryset.filter(
+            timestamp__date=yesterday
+        ).count()
+
+    else:
+        today_count = (
+            queryset
+            .filter(timestamp__date=today)
+            .values("visitor_id")
+            .distinct()
+            .count()
+        )
+
+        yesterday_count = (
+            queryset
+            .filter(timestamp__date=yesterday)
+            .values("visitor_id")
+            .distinct()
+            .count()
+        )
+
+    if yesterday_count == 0:
+        return 100 if today_count else 0
+
+    return round(
+        (
+            (today_count - yesterday_count)
+            / yesterday_count
+        )
+        * 100,
+        1,
+    )
 
 
 @login_required
 def dashboard(request):
-    """
-    Dashboard view:
-    - Superuser: show combined data from ALL branches by default, with ability to filter by ?branch=...
-    - Normal users: show only their assigned branch
-    """
-    branch_filter = request.GET.get('branch', None)
-
-    if request.user.is_superuser:
-        # ✅ If superuser selects a branch → filter by that branch
-        # ✅ If not → combine ALL branches
-        user_pc_prefix = branch_filter if branch_filter else None
-    else:
-        # ✅ Regular users → only their assigned branch
-        user_pc_prefix = get_user_pc_prefix(request.user)
-
-    # Get all active branches for superuser dropdown
-    branches = []
-    if request.user.is_superuser:
-        branches = Branch.objects.filter(is_active=True).values('id', 'name', 'pc_prefix')
-
-    # Get date range parameters
-    time_range = request.GET.get('range', '14days')
-    hourly_range = request.GET.get('hourly', 'today')
-
-    # Calculate date ranges
-    end_date = timezone.now()
-    if time_range == 'day':
-        start_date = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
-        trend_days = 1
-    elif time_range == 'week':
-        start_date = end_date - timedelta(days=7)
-        trend_days = 7
-    elif time_range == 'month':
-        start_date = end_date - timedelta(days=30)
-        trend_days = 30
-    else:  # 14days default
-        start_date = end_date - timedelta(days=14)
-        trend_days = 14
-
-    # Get data from database
-    emotion_data = get_emotion_data(user_pc_prefix, start_date, end_date)
-    hourly_data = get_hourly_data(user_pc_prefix, hourly_range)
-
-    # Get today's data for the summary cards
-    today = timezone.now().date()
-
-    # ✅ Unique visitors today
-    if request.user.is_superuser:
-        user_pc_prefix = request.GET.get('branch', None)
-        # Show total visitors across all branches for superadmin
-        if not user_pc_prefix:
-            total_visitors_today = CapturedSnapshot.objects.filter(
-                timestamp__date=today
-            ).values("visitor__face_id").distinct().count()
-        else:
-            total_visitors_today = CapturedSnapshot.objects.filter(
-                timestamp__date=today,
-                pc_name__startswith=user_pc_prefix
-            ).values("visitor__face_id").distinct().count()
-    else:
-        user_pc_prefix = get_user_pc_prefix(request.user)
-        total_visitors_today = CapturedSnapshot.objects.filter(
-            timestamp__date=today,
-            pc_name__startswith=user_pc_prefix
-        ).values("visitor__face_id").distinct().count()
-
-    # ✅ Top emotion today
-    emotion_counts_today = CapturedSnapshot.objects.filter(timestamp__date=today)
-    if user_pc_prefix:
-        emotion_counts_today = emotion_counts_today.filter(pc_name__startswith=user_pc_prefix)
-    emotion_counts_today = (
-        emotion_counts_today
-        .values("emotion")
-        .annotate(total=Count("id"))
-        .order_by("-total")
+    preferences, _ = (
+        UserPreference.objects
+        .get_or_create(
+            user=request.user
+        )
     )
 
-    if emotion_counts_today:
-        top_emotion_today = {
-            "emotion": emotion_counts_today[0]["emotion"],
-            "percentage": round((emotion_counts_today[0]["total"] / sum(e["total"] for e in emotion_counts_today)) * 100, 1),
-        }
-    else:
-        top_emotion_today = {"emotion": "none", "percentage": 0}
-
-    # ✅ Negative emotions today (neutral is NOT negative)
-    negative_emotions_today = sum(
-        e["total"] for e in emotion_counts_today 
-        if e["emotion"] in ['sad', 'angry']  # neutral is not included
+    scoped_all, selected_branch = (
+        _scoped_query(request)
     )
-    total_detections_today = sum(e["total"] for e in emotion_counts_today)
-    negative_percentage_today = round((negative_emotions_today / total_detections_today * 100), 1) if total_detections_today > 0 else 0
 
-    # Define emotion colors for charts
-    emotion_colors = {
-        'happy': '#FFD166',
-        'sad': '#118AB2', 
-        'angry': '#EF476F',
-        'neutral': '#8A8A8A',
-        'surprise': '#8338EC',
-        'none': '#6C757D'
-    }
+    time_range = (
+        request.GET.get("range")
+        or preferences.default_date_range
+    )
 
-    # Prepare emotion distribution data with colors
-    emotion_labels = list(emotion_data['emotion_counts'].keys())
-    emotion_values = list(emotion_data['emotion_counts'].values())
-    emotion_color_values = [emotion_colors.get(emotion, '#6C757D') for emotion in emotion_labels]
+    start, end, trend_days = _date_window(
+        time_range
+    )
 
-    # Prepare trend datasets with colors
-    for dataset in emotion_data['trend_datasets']:
-        emotion = dataset['label'].lower()
-        dataset['backgroundColor'] = emotion_colors.get(emotion, '#6C757D') + '80'  # Add transparency
-        dataset['borderColor'] = emotion_colors.get(emotion, '#6C757D')
-        dataset['borderWidth'] = 2
+    period_queryset = scoped_all.filter(
+        timestamp__range=(start, end),
+        status="done",
+    )
+
+    trend_labels, trend_datasets = _trend_data(
+        period_queryset,
+        start,
+        end,
+    )
+
+    hourly_range = (
+        request.GET.get("hourly")
+        or preferences.default_hourly_range
+    )
+    target_date = timezone.localdate()
+
+    if hourly_range == "yesterday":
+        target_date -= timedelta(days=1)
+
+    hourly = _hourly_data(
+        scoped_all.filter(status="done"),
+        target_date,
+    )
+
+    today_queryset = scoped_all.filter(
+        timestamp__date=timezone.localdate(),
+        status="done",
+    )
+
+    today_counts = _emotion_counts(
+        today_queryset
+    )
+
+    total_detections = sum(
+        today_counts.values()
+    )
+
+    top_name, top_value = max(
+        today_counts.items(),
+        key=lambda item: item[1],
+    )
+
+    negative_count = (
+        today_counts["sad"]
+        + today_counts["angry"]
+    )
+
+    hourly_totals = [
+        sum(
+            hourly[emotion][index]
+            for emotion in EMOTIONS
+        )
+        for index in range(24)
+    ]
+
+    if max(hourly_totals, default=0):
+        peak_hour = hourly_totals.index(
+            max(hourly_totals)
+        )
+    else:
+        peak_hour = None
+
+    if selected_branch:
+        branch_name = selected_branch.name
+
+    elif request.user.is_superuser:
+        branch_name = "All Banks"
+
+    elif request.user.bank_id:
+        branch_name = request.user.bank.name
+
+    else:
+        branch_name = "No Bank Assigned"
 
     context = {
-        'branch_name': (branch_filter or "All Branches") if request.user.is_superuser else (user_pc_prefix or "Unknown"),
-        'total_visitors': total_visitors_today,
-        'visitor_growth': calculate_growth(user_pc_prefix),
-        'top_emotion': top_emotion_today,
-        'negative_percentage': negative_percentage_today,
-        'negative_growth': calculate_negative_growth(user_pc_prefix),
-        'activity_level': get_activity_level(total_visitors_today),
-        'peak_time': get_peak_time(hourly_data),
-        'total_detections': total_detections_today,
-        'emotion_labels': json.dumps(emotion_labels),
-        'emotion_data': json.dumps(emotion_values),
-        'emotion_colors': json.dumps(emotion_color_values),
-        'trend_labels': json.dumps(emotion_data['trend_labels']),
-        'trend_datasets': json.dumps(emotion_data['trend_datasets']),
-        'trend_days': trend_days,
-        'time_range': time_range,
-        'hourly_range': hourly_range,
-        'hourly_labels': json.dumps(hourly_data['labels']),
-        'hourly_happy': json.dumps(hourly_data['happy']),
-        'hourly_neutral': json.dumps(hourly_data['neutral']),
-        'hourly_sad': json.dumps(hourly_data['sad']),
-        'hourly_angry': json.dumps(hourly_data['angry']),
-        'hourly_surprise': json.dumps(hourly_data['surprise']),
-        'branches': branches,  # Superuser dropdown
-        'selected_branch': branch_filter,  # Track selection
-        'is_superuser': request.user.is_superuser,  # Flag
+        "branch_name": branch_name,
+        "dashboard_preferences": preferences,
+
+        "total_visitors": (
+            today_queryset
+            .values("visitor_id")
+            .distinct()
+            .count()
+        ),
+
+        "visitor_growth": _growth(
+            scoped_all
+        ),
+
+        "top_emotion": {
+            "emotion": (
+                top_name
+                if top_value
+                else "none"
+            ),
+            "percentage": (
+                round(
+                    top_value
+                    / total_detections
+                    * 100,
+                    1,
+                )
+                if total_detections
+                else 0
+            ),
+        },
+
+        "negative_percentage": (
+            round(
+                negative_count
+                / total_detections
+                * 100,
+                1,
+            )
+            if total_detections
+            else 0
+        ),
+
+        "negative_growth": _growth(
+            scoped_all,
+            negative=True,
+        ),
+
+        "activity_level": (
+            "No Activity"
+            if total_detections == 0
+            else "Low"
+            if total_detections < 10
+            else "Moderate"
+            if total_detections < 30
+            else "High"
+            if total_detections < 50
+            else "Very High"
+        ),
+
+        "peak_time": (
+            f"{peak_hour:02d}:00"
+            if peak_hour is not None
+            else "No data"
+        ),
+
+        "total_detections": total_detections,
+
+        "emotion_labels": json.dumps(
+            list(today_counts.keys())
+        ),
+
+        "emotion_data": json.dumps(
+            list(today_counts.values())
+        ),
+
+        "emotion_colors": json.dumps(
+            [
+                EMOTION_COLORS[emotion]
+                for emotion in today_counts
+            ]
+        ),
+
+        "trend_labels": json.dumps(
+            trend_labels
+        ),
+
+        "trend_datasets": json.dumps(
+            trend_datasets
+        ),
+
+        "trend_days": trend_days,
+        "time_range": time_range,
+        "hourly_range": hourly_range,
+
+        "hourly_labels": json.dumps(
+            hourly["labels"]
+        ),
+
+        "hourly_happy": json.dumps(
+            hourly["happy"]
+        ),
+
+        "hourly_neutral": json.dumps(
+            hourly["neutral"]
+        ),
+
+        "hourly_sad": json.dumps(
+            hourly["sad"]
+        ),
+
+        "hourly_angry": json.dumps(
+            hourly["angry"]
+        ),
+
+        "hourly_surprise": json.dumps(
+            hourly["surprise"]
+        ),
+
+        "branches": visible_branches(
+            request.user
+        ),
+
+        "selected_branch": (
+            str(selected_branch.id)
+            if selected_branch
+            else ""
+        ),
+
+        "is_superuser": (
+            request.user.is_superuser
+        ),
     }
 
-    return render(request, 'monitor/dashboard.html', context)
-
-
-def get_user_pc_prefix(user):
-    """
-    Get the PC name prefix for the current user
-    This should be implemented based on how you store user-branch relationships
-    """
-    # Check if user has a profile with pc_prefix
-    if hasattr(user, 'profile') and hasattr(user.profile, 'pc_prefix'):
-        return user.profile.pc_prefix
-    
-    # Check if user has a branch relationship
-    if hasattr(user, 'branch') and user.branch:
-        return user.branch.pc_prefix  # Adjust based on your Branch model
-    
-    return None
-
-def get_emotion_data(pc_prefix, start_date, end_date):
-    """
-    Get emotion data filtered by PC prefix and date range
-    """
-    # Build base query
-    query = CapturedSnapshot.objects.filter(timestamp__range=(start_date, end_date))
-    
-    # Apply PC prefix filter if provided
-    if pc_prefix:
-        query = query.filter(pc_name__startswith=pc_prefix)
-    
-    # Get total visitors (unique face_ids)
-    total_visitors = query.values('visitor__face_id').distinct().count()
-    
-    # Get total detections
-    total_detections = query.count()
-    
-    # Get emotion counts
-    emotion_counts_query = query.exclude(emotion__isnull=True)\
-                               .values('emotion')\
-                               .annotate(count=Count('id'))\
-                               .order_by('-count')
-    
-    # Process emotion counts
-    emotion_counts = {'happy': 0, 'sad': 0, 'angry': 0, 'neutral': 0, 'surprise': 0}
-    for item in emotion_counts_query:
-        if item['emotion'] in emotion_counts:
-            emotion_counts[item['emotion']] = item['count']
-    
-    # Calculate top emotion
-    top_emotion = max(emotion_counts.items(), key=lambda x: x[1])
-    top_emotion_percentage = (top_emotion[1] / total_detections * 100) if total_detections > 0 else 0
-    
-    # Calculate negative emotions percentage (neutral is NOT negative)
-    negative_emotions = emotion_counts['sad'] + emotion_counts['angry']
-    negative_percentage = (negative_emotions / total_detections * 100) if total_detections > 0 else 0
-    
-    # Get trend data
-    trend_data = get_trend_data(pc_prefix, start_date, end_date)
-    
-    return {
-        'total_visitors': total_visitors,
-        'total_detections': total_detections,
-        'emotion_counts': emotion_counts,
-        'top_emotion': {'emotion': top_emotion[0], 'percentage': round(top_emotion_percentage, 1)},
-        'negative_percentage': round(negative_percentage, 1),
-        'trend_labels': trend_data['labels'],
-        'trend_datasets': trend_data['datasets']
-    }
-
-def get_trend_data(pc_prefix, start_date, end_date):
-    """
-    Get emotion trend data for the chart using Django ORM
-    """
-    # Generate date range
-    date_range = []
-    current_date = start_date.date()
-    end_date_date = end_date.date()
-    
-    while current_date <= end_date_date:
-        date_range.append(current_date.strftime('%Y-%m-%d'))
-        current_date += timedelta(days=1)
-    
-    # Get daily counts for each emotion
-    emotions = ['happy', 'sad', 'angry', 'neutral', 'surprise']
-    datasets = []
-    colors = ['#2ecc71', '#3498db', '#e74c3c', '#f1c40f', '#9b59b6']
-    
-    for i, emotion in enumerate(emotions):
-        daily_counts = []
-        for date_str in date_range:
-            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-            query = CapturedSnapshot.objects.filter(
-                timestamp__date=date_obj,
-                emotion=emotion
-            )
-            
-            if pc_prefix:
-                query = query.filter(pc_name__startswith=pc_prefix)
-            
-            count = query.count()
-            daily_counts.append(count)
-        
-        datasets.append({
-            'label': emotion.title(),
-            'data': daily_counts,
-            'backgroundColor': colors[i],
-            'borderColor': colors[i],
-            'borderWidth': 1
-        })
-    
-    return {'labels': date_range, 'datasets': datasets}
-
-def get_hourly_data(pc_prefix, range_type):
-    """
-    Get hourly emotion data using Django ORM
-    """
-    # Determine date filter
-    if range_type == 'yesterday':
-        target_date = (timezone.now() - timedelta(days=1)).date()
-    else:  # today
-        target_date = timezone.now().date()
-    
-    # Get hourly counts for each emotion
-    hours = list(range(24))
-    emotions = ['happy', 'neutral', 'sad', 'angry', 'surprise']
-    result = {'labels': [f"{h:02d}:00" for h in hours]}
-    
-    for emotion in emotions:
-        hourly_counts = []
-        for hour in hours:
-            query = CapturedSnapshot.objects.filter(
-                timestamp__date=target_date,
-                timestamp__hour=hour,
-                emotion=emotion
-            )
-            if pc_prefix:
-                query = query.filter(pc_name__startswith=pc_prefix)
-            count = query.count()
-            hourly_counts.append(count)
-        
-        result[emotion] = hourly_counts
-    
-    return result
-
-def get_activity_level(total_visitors):
-    """Determine activity level based on visitor count"""
-    if total_visitors == 0:
-        return "No Activity"
-    elif total_visitors < 10:
-        return "Low"
-    elif total_visitors < 30:
-        return "Moderate"
-    elif total_visitors < 50:
-        return "High"
-    else:
-        return "Very High"
-
-def get_peak_time(hourly_data):
-    """Find the hour with the most activity"""
-    total_by_hour = [
-        sum(hourly_data[emotion][i] for emotion in ['happy', 'neutral', 'sad', 'angry', 'surprise']) 
-        for i in range(24)
-    ]
-    
-    if max(total_by_hour) == 0:
-        return "No data"
-    
-    peak_hour = total_by_hour.index(max(total_by_hour))
-    return f"{peak_hour:02d}:00"
-
-def calculate_growth(pc_prefix):
-    """Calculate growth percentage from previous period"""
-    # Implement actual growth calculation based on your business logic
-    # This is a placeholder implementation
-    today = timezone.now().date()
-    yesterday = today - timedelta(days=1)
-
-    # Get today's count
-    query_today = CapturedSnapshot.objects.filter(timestamp__date=today)
-    if pc_prefix:
-        query_today = query_today.filter(pc_name__startswith=pc_prefix)
-    today_count = query_today.values('visitor__face_id').distinct().count()
-    
-    # Get yesterday's count
-    query_yesterday = CapturedSnapshot.objects.filter(timestamp__date=yesterday)
-    if pc_prefix:
-        query_yesterday = query_yesterday.filter(pc_name__startswith=pc_prefix)
-    yesterday_count = query_yesterday.values('visitor__face_id').distinct().count()
-    
-    if yesterday_count == 0:
-        return 100 if today_count > 0 else 0
-    
-    growth = ((today_count - yesterday_count) / yesterday_count) * 100
-    return round(growth, 1)
-
-def calculate_negative_growth(pc_prefix):
-    """Calculate negative emotions growth percentage"""
-    # Implement actual negative growth calculation
-    # This is a placeholder implementation
-    today = timezone.now().date()
-    yesterday = today - timedelta(days=1)
-    
-    # Get today's negative emotions (neutral is NOT negative)
-    query_today = CapturedSnapshot.objects.filter(
-        timestamp__date=today,
-        emotion__in=['sad', 'angry']
+    return render(
+        request,
+        "monitor/dashboard.html",
+        context,
     )
-    if pc_prefix:
-        query_today = query_today.filter(pc_name__startswith=pc_prefix)
-    today_negative = query_today.count()
-    
-    # Get yesterday's negative emotions (neutral is NOT negative)
-    query_yesterday = CapturedSnapshot.objects.filter(
-        timestamp__date=yesterday,
-        emotion__in=['sad', 'angry']
-    )
-    if pc_prefix:
-        query_yesterday = query_yesterday.filter(pc_name__startswith=pc_prefix)
-    yesterday_negative = query_yesterday.count()
-    
-    if yesterday_negative == 0:
-        return 100 if today_negative > 0 else 0
-    
-    growth = ((today_negative - yesterday_negative) / yesterday_negative) * 100
-    return round(growth, 1)
+
 
 @login_required
 def branch_overview(request):
-    if not request.user.is_superuser:
-        raise PermissionDenied
+    require_bank_admin(request.user)
 
-    branches = Branch.objects.filter(is_active=True)
-    time_range = request.GET.get('range', 'week')
-    if time_range == 'day':
-        days = 1
-    elif time_range == 'month':
-        days = 30
-    else:  # default to week
-        days = 7
+    time_range = request.GET.get(
+        "range",
+        "week",
+    )
 
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days-1)
-    date_labels = [(start_date + timedelta(days=i)).strftime('%b %d') for i in range(days)]
+    start, end, days = _date_window(
+        time_range
+    )
+
+    labels = [
+        (
+            start + timedelta(days=index)
+        ).strftime("%b %d")
+        for index in range(days)
+    ]
 
     branch_summaries = []
     chart_datasets = []
 
-    # Define a color palette for branches (can be extended as needed)
-    BRANCH_COLORS = [
-        {"border": "#3498db", "background": "rgba(52, 152, 219, 0.1)"},  # Blue
-        {"border": "#e74c3c", "background": "rgba(231, 76, 60, 0.1)"},   # Red
-        {"border": "#2ecc71", "background": "rgba(46, 204, 113, 0.1)"},  # Green
-        {"border": "#f39c12", "background": "rgba(243, 156, 18, 0.1)"},  # Orange
-        {"border": "#9b59b6", "background": "rgba(155, 89, 182, 0.1)"},  # Purple
-        {"border": "#1abc9c", "background": "rgba(26, 188, 156, 0.1)"},  # Teal
-        {"border": "#d35400", "background": "rgba(211, 84, 0, 0.1)"},    # Dark Orange
-        {"border": "#c0392b", "background": "rgba(192, 57, 43, 0.1)"},   # Dark Red
-        {"border": "#16a085", "background": "rgba(22, 160, 133, 0.1)"},  # Dark Teal
-        {"border": "#8e44ad", "background": "rgba(142, 68, 173, 0.1)"},  # Dark Purple
-        {"border": "#27ae60", "background": "rgba(39, 174, 96, 0.1)"},   # Dark Green
-        {"border": "#2980b9", "background": "rgba(41, 128, 185, 0.1)"},  # Dark Blue
-    ]
-
-    for idx, branch in enumerate(branches):
-        pc_prefix = branch.pc_prefix
-
-        visitor_count = CapturedSnapshot.objects.filter(
-            pc_name__startswith=pc_prefix,
-            timestamp__range=(start_date, end_date)
-        ).values('visitor__face_id').distinct().count()
-
-        emotion_counts = (
-            CapturedSnapshot.objects.filter(
-                pc_name__startswith=pc_prefix,
-                timestamp__range=(start_date, end_date)
-            )
-            .values('emotion')
-            .annotate(count=Count('id'))
-            .order_by('-count')
+    for branch in visible_branches(
+        request.user
+    ):
+        queryset = visible_snapshots(
+            request.user
+        ).filter(
+            branch_id=branch.id,
+            timestamp__range=(start, end),
+            status="done",
         )
-        top_emotion = emotion_counts[0]['emotion'] if emotion_counts else 'none'
 
-        total = sum(e['count'] for e in emotion_counts)
-        happy = next((e['count'] for e in emotion_counts if e['emotion'] == 'happy'), 0)
-        positivity_score = (happy / total) if total > 0 else 0
-        positivity_percent = round(positivity_score * 100, 1)
+        counts = _emotion_counts(queryset)
+        total = sum(counts.values())
 
-        trend_counts = []
-        for date_str in [(start_date + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(days)]:
-            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-            qs = CapturedSnapshot.objects.filter(
-                pc_name__startswith=pc_prefix,
-                timestamp__date=date_obj
+        top_emotion = (
+            max(
+                counts.items(),
+                key=lambda item: item[1],
+            )[0]
+            if total
+            else "none"
+        )
+
+        trend = []
+
+        for index in range(days):
+            date_value = (
+                start
+                + timedelta(days=index)
+            ).date()
+
+            daily_queryset = queryset.filter(
+                timestamp__date=date_value
             )
-            pos = qs.filter(emotion='happy').count()
-            neg = qs.filter(emotion__in=['sad', 'angry']).count()
-            net = pos - neg
-            trend_counts.append(net)
 
-        # Use branch index to get a unique color, cycle through palette if needed
-        color_idx = idx % len(BRANCH_COLORS)
-        branch_color = BRANCH_COLORS[color_idx]
+            positive = daily_queryset.filter(
+                emotion="happy"
+            ).count()
 
-        branch_summaries.append({
-            'id': branch.id,
-            'name': branch.name,
-            'visitor_count': visitor_count,
-            'top_emotion': top_emotion,
-            'positivity_score': positivity_score,
-            'positivity_percent': positivity_percent,
-            'trend_counts': trend_counts,
-            'color': branch_color,  # Store color for template use if needed
-        })
+            negative = daily_queryset.filter(
+                emotion__in=("sad", "angry")
+            ).count()
 
-        chart_datasets.append({
-            "label": branch.name,
-            "data": trend_counts,
-            "borderColor": branch_color["border"],
-            "backgroundColor": branch_color["background"],
-            "pointBackgroundColor": branch_color["border"],
-            "pointBorderColor": "#fff",
-            "pointHoverBackgroundColor": "#fff",
-            "pointHoverBorderColor": branch_color["border"],
-            "pointRadius": 4,
-            "pointHoverRadius": 6,
-            "tension": 0.4,
-            "fill": True,
-            "borderWidth": 3,
-        })
+            trend.append(positive - negative)
 
-    context = {
-        "branches": branch_summaries,
-        "time_range": time_range,
-        "chart_labels": json.dumps(date_labels),
-        "chart_datasets": json.dumps(chart_datasets),
-    }
-    return render(request, "monitor/branch_overview.html", context)
+        display_name = branch.name
 
-@login_required
-def reports(request):
-    context = {
-        'page_title': 'Reports',
-        # Add your reports data here
-    }
-    return render(request, 'monitor/reports.html', context)
+        if request.user.is_superuser:
+            display_name = (
+                f"{branch.bank.code} - "
+                f"{branch.name}"
+            )
 
-@login_required
-def settings(request):
-    context = {
-        'page_title': 'Settings',
-        # Add your settings data here
-    }
-    return render(request, 'monitor/settings.html', context)
+        branch_summaries.append(
+            {
+                "id": branch.id,
+                "name": display_name,
+
+                "visitor_count": (
+                    queryset
+                    .values("visitor_id")
+                    .distinct()
+                    .count()
+                ),
+
+                "top_emotion": top_emotion,
+
+                "positivity_percent": (
+                    round(
+                        counts["happy"]
+                        / total
+                        * 100,
+                        1,
+                    )
+                    if total
+                    else 0
+                ),
+
+                "trend_counts": trend,
+            }
+        )
+
+        chart_datasets.append(
+            {
+                "label": display_name,
+                "data": trend,
+                "borderWidth": 2,
+                "tension": 0.3,
+                "fill": False,
+            }
+        )
+
+    return render(
+        request,
+        "monitor/branch_overview.html",
+        {
+            "branches": branch_summaries,
+            "time_range": time_range,
+            "chart_labels": json.dumps(labels),
+            "chart_datasets": json.dumps(
+                chart_datasets
+            ),
+        },
+    )
+
 
 @login_required
 def branch_detail(request, branch_id):
-    try:
-        branch = Branch.objects.get(pk=branch_id)
-    except Branch.DoesNotExist:
-        return HttpResponse("Branch not found.", status=404)
-
-    if not request.user.is_superuser:
-        user_branch = getattr(request.user, "branch", None)
-        if not user_branch or user_branch.id != branch.id:
-            from django.http import HttpResponseForbidden
-            return HttpResponseForbidden("You do not have permission to view this branch.")
-
-    pc_prefix = branch.pc_prefix
-
-    # Get recent visits
-    visits = CapturedSnapshot.objects.filter(
-        pc_name__startswith=pc_prefix
-    ).select_related('visitor').order_by('-timestamp')[:20]
-    
-    total_emotions = CapturedSnapshot.objects.filter(pc_name__startswith=pc_prefix).count()
-
-    # Get emotion distribution
-    from django.db.models import Count
-    emotion_dist = (
-        CapturedSnapshot.objects.filter(pc_name__startswith=pc_prefix)
-        .values('emotion')
-        .annotate(count=Count('id'))
-        .order_by('-count')
+    branch = get_visible_branch_or_404(
+        request.user,
+        branch_id,
     )
-    
-    # Define emotion colors
-    EMOTION_COLORS = {
-        'happy': {'border': '#FFD166', 'background': 'rgba(255, 209, 102, 0.2)'},
-        'neutral': {'border': '#8A8A8A', 'background': 'rgba(138, 138, 138, 0.2)'},
-        'sad': {'border': '#118AB2', 'background': 'rgba(17, 138, 178, 0.2)'},
-        'angry': {'border': '#EF476F', 'background': 'rgba(239, 71, 111, 0.2)'},
-        'surprise': {'border': '#8338EC', 'background': 'rgba(131, 56, 236, 0.2)'},
-        'none': {'border': '#6C757D', 'background': 'rgba(108, 117, 125, 0.2)'},
-        'unknown': {'border': '#6C757D', 'background': 'rgba(108, 117, 125, 0.2)'}
-    }
 
-    # Prepare emotion data for chart
-    emotion_labels = []
-    emotion_counts = []
-    emotion_colors = []
-    
-    for e in emotion_dist:
-        emotion_name = e['emotion'] or 'unknown'
-        emotion_labels.append(emotion_name.title())
-        emotion_counts.append(e['count'])
-        emotion_colors.append(EMOTION_COLORS.get(emotion_name.lower(), EMOTION_COLORS['unknown'])['border'])
+    queryset = visible_snapshots(
+        request.user
+    ).filter(
+        branch_id=branch.id,
+        status="done",
+    )
 
-    # Hourly activity data
-    hours = list(range(24))
-    hourly_labels = [f"{h:02d}:00" for h in hours]
-    hourly_visits = []
-    hourly_positivity = []
+    counts = _emotion_counts(queryset)
 
-    for hour in hours:
-        # Get visits for this hour
-        hour_visits = CapturedSnapshot.objects.filter(
-            pc_name__startswith=pc_prefix,
-            timestamp__hour=hour
+    hourly = _hourly_data(
+        queryset,
+        timezone.localdate(),
+    )
+
+    hourly_visits = [
+        sum(
+            hourly[emotion][index]
+            for emotion in EMOTIONS
         )
-        
-        count = hour_visits.count()
-        hourly_visits.append(count)
-        
-        # Calculate positivity (percentage of happy emotions)
-        if count > 0:
-            happy_count = hour_visits.filter(emotion='happy').count()
-            positivity = (happy_count / count) * 100
-        else:
-            positivity = 0
-            
-        hourly_positivity.append(round(positivity, 1))
+        for index in range(24)
+    ]
 
-    # Debug info - you can remove this in production
-    print(f"Emotion labels: {emotion_labels}")
-    print(f"Emotion counts: {emotion_counts}")
-    print(f"Hourly visits: {hourly_visits}")
-    print(f"Hourly positivity: {hourly_positivity}")
+    hourly_positivity = [
+        (
+            round(
+                hourly["happy"][index]
+                / hourly_visits[index]
+                * 100,
+                1,
+            )
+            if hourly_visits[index]
+            else 0
+        )
+        for index in range(24)
+    ]
 
-    context = {
-        'branch': branch,
-        'visits': visits,
-        'total_emotions': total_emotions,
-        'emotion_dist': emotion_dist,
-        'emotion_labels': json.dumps(emotion_labels),
-        'emotion_counts': json.dumps(emotion_counts),
-        'emotion_colors': json.dumps(emotion_colors),
-        'hourly_labels': json.dumps(hourly_labels),
-        'hourly_visits': json.dumps(hourly_visits),
-        'hourly_positivity': json.dumps(hourly_positivity),
-    }
-    
-    return render(request, 'monitor/branch_detail.html', context)
+    emotion_distribution = [
+        {
+            "emotion": emotion,
+            "count": count,
+        }
+        for emotion, count in counts.items()
+    ]
+
+    return render(
+        request,
+        "monitor/branch_detail.html",
+        {
+            "branch": branch,
+            "visits": queryset[:20],
+            "total_emotions": queryset.count(),
+
+            "emotion_dist": (
+                emotion_distribution
+            ),
+
+            "emotion_labels": json.dumps(
+                [
+                    emotion.title()
+                    for emotion in counts
+                ]
+            ),
+
+            "emotion_counts": json.dumps(
+                list(counts.values())
+            ),
+
+            "emotion_colors": json.dumps(
+                [
+                    EMOTION_COLORS[emotion]
+                    for emotion in counts
+                ]
+            ),
+
+            "hourly_labels": json.dumps(
+                hourly["labels"]
+            ),
+
+            "hourly_visits": json.dumps(
+                hourly_visits
+            ),
+
+            "hourly_positivity": json.dumps(
+                hourly_positivity
+            ),
+        },
+    )
+
 
 @login_required
 def emotion_analytics(request):
-    # Example: Use the same logic as dashboard for demo purposes
-    user_pc_prefix = None
-    if request.user.is_superuser:
-        user_pc_prefix = request.GET.get('branch', None)
-    else:
-        user_pc_prefix = get_user_pc_prefix(request.user)
+    scoped_queryset, _ = _scoped_query(
+        request
+    )
 
-    # Date range for analytics
-    time_range = request.GET.get('range', 'week')
-    if time_range == 'day':
-        days = 1
-    elif time_range == 'month':
-        days = 30
-    else:
-        days = 7
+    time_range = request.GET.get(
+        "range",
+        "week",
+    )
 
-    end_date = timezone.now()
-    start_date = end_date - timedelta(days=days-1)
+    start, end, _ = _date_window(
+        time_range
+    )
 
-    # Trend data for chart
-    emotion_data = get_emotion_data(user_pc_prefix, start_date, end_date)
-    chart_data = {
-        "labels": list(emotion_data['trend_labels']),
-        "datasets": emotion_data['trend_datasets'],
-    }
+    period_queryset = scoped_queryset.filter(
+        timestamp__range=(start, end),
+        status="done",
+    )
 
-    # Hourly data for chart
-    hourly_data = get_hourly_data(user_pc_prefix, "today")
-    hourly_labels = hourly_data['labels']
-    hourly_total = [sum([hourly_data[e][i] for e in ['happy', 'neutral', 'sad', 'angry', 'surprise']]) for i in range(24)]
+    counts = _emotion_counts(
+        period_queryset
+    )
 
-    # Distribution for doughnut chart
-    dist_labels = list(emotion_data['emotion_counts'].keys())
-    dist_data = list(emotion_data['emotion_counts'].values())
-    emotion_colors = {
-        'happy': '#FFD166',
-        'sad': '#118AB2',
-        'angry': '#EF476F',
-        'neutral': '#8A8A8A',
-        'surprise': '#8338EC',
-        'none': '#6C757D'
-    }
-    dist_colors = [emotion_colors.get(e, '#6C757D') for e in dist_labels]
+    labels, datasets = _trend_data(
+        period_queryset,
+        start,
+        end,
+    )
 
-    context = {
-        "page_title": "Emotion Analytics",
-        "chart_data": chart_data,
-        "hourly_labels": json.dumps(hourly_labels),
-        "hourly_data": json.dumps(hourly_total),
-        "dist_labels": json.dumps(dist_labels),
-        "dist_data": json.dumps(dist_data),
-        "dist_colors": json.dumps(dist_colors),
-        "time_range": time_range,
-    }
-    return render(request, 'monitor/emotion_analytics.html', context)
+    hourly = _hourly_data(
+        scoped_queryset.filter(status="done"),
+        timezone.localdate(),
+    )
+
+    hourly_total = [
+        sum(
+            hourly[emotion][index]
+            for emotion in EMOTIONS
+        )
+        for index in range(24)
+    ]
+
+    branch_comparison = []
+
+    for branch in visible_branches(
+        request.user
+    ):
+        branch_queryset = (
+            period_queryset.filter(
+                branch_id=branch.id
+            )
+        )
+
+        branch_counts = _emotion_counts(
+            branch_queryset
+        )
+
+        total = sum(
+            branch_counts.values()
+        )
+
+        branch_comparison.append(
+            {
+                "name": branch.name,
+
+                "happy": (
+                    round(
+                        branch_counts["happy"]
+                        / total
+                        * 100,
+                        1,
+                    )
+                    if total
+                    else 0
+                ),
+
+                "neutral": (
+                    round(
+                        branch_counts["neutral"]
+                        / total
+                        * 100,
+                        1,
+                    )
+                    if total
+                    else 0
+                ),
+
+                "negative": (
+                    round(
+                        (
+                            branch_counts["sad"]
+                            + branch_counts["angry"]
+                        )
+                        / total
+                        * 100,
+                        1,
+                    )
+                    if total
+                    else 0
+                ),
+
+                "total_visits": (
+                    branch_queryset
+                    .values("visitor_id")
+                    .distinct()
+                    .count()
+                ),
+            }
+        )
+
+    return render(
+        request,
+        "monitor/emotion_analytics.html",
+        {
+            "page_title": "Emotion Analytics",
+
+            "chart_data": {
+                "labels": labels,
+                "datasets": datasets,
+            },
+
+            "hourly_labels": json.dumps(
+                hourly["labels"]
+            ),
+
+            "hourly_data": json.dumps(
+                hourly_total
+            ),
+
+            "dist_labels": json.dumps(
+                list(counts.keys())
+            ),
+
+            "dist_data": json.dumps(
+                list(counts.values())
+            ),
+
+            "dist_colors": json.dumps(
+                [
+                    EMOTION_COLORS[emotion]
+                    for emotion in counts
+                ]
+            ),
+
+            "time_range": time_range,
+
+            "branch_comparison": (
+                branch_comparison
+            ),
+        },
+    )
+
+
+@login_required
+def reports(request):
+    branches = visible_branches(
+        request.user
+    )
+
+    if request.method == "POST":
+        queryset, _ = _scoped_query(request)
+
+        try:
+            date_from = datetime.strptime(
+                request.POST["date_from"],
+                "%Y-%m-%d",
+            ).date()
+
+            date_to = datetime.strptime(
+                request.POST["date_to"],
+                "%Y-%m-%d",
+            ).date()
+
+        except (KeyError, ValueError):
+            messages.error(
+                request,
+                "Choose a valid date range.",
+            )
+
+            return redirect("reports")
+
+        queryset = queryset.filter(
+            timestamp__date__range=(
+                date_from,
+                date_to,
+            )
+        ).order_by("timestamp")
+
+        response = HttpResponse(
+            content_type="text/csv"
+        )
+
+        response["Content-Disposition"] = (
+            "attachment; "
+            f'filename="sentiment-'
+            f'{date_from}-{date_to}.csv"'
+        )
+
+        writer = csv.writer(response)
+
+        writer.writerow(
+            [
+                "Bank",
+                "Branch",
+                "Visitor ID",
+                "PC",
+                "Emotion",
+                "Confidence",
+                "Timestamp",
+            ]
+        )
+
+        for snapshot in queryset:
+            writer.writerow(
+                [
+                    snapshot.bank.name,
+                    snapshot.branch.name,
+                    snapshot.visitor.face_id,
+                    snapshot.pc_name,
+                    snapshot.emotion,
+                    snapshot.confidence,
+                    snapshot.timestamp.isoformat(),
+                ]
+            )
+
+        return response
+
+    return render(
+        request,
+        "monitor/reports.html",
+        {
+            "branches": branches,
+        },
+    )
+
+
+@login_required
+def settings_view(request):
+    return render(
+        request,
+        "monitor/settings.html",
+        {
+            "page_title": "Settings",
+        },
+    )
+
+
+@login_required
+def snapshot_image(request, snapshot_id):
+    """
+    Protect captured images using the same tenant restrictions
+    used for dashboard records.
+    """
+    snapshot = visible_snapshots(
+        request.user
+    ).filter(
+        pk=snapshot_id
+    ).first()
+
+    if not snapshot:
+        raise Http404
+
+    root = Path(
+        settings.CAPTURED_FACES_ROOT
+    ).resolve()
+
+    image_path = (
+        root / snapshot.image_path
+    ).resolve()
+
+    # Prevent ../../ path traversal.
+    if root not in image_path.parents:
+        raise Http404
+
+    if not image_path.is_file():
+        raise Http404
+
+    return FileResponse(
+        image_path.open("rb"),
+        content_type="image/jpeg",
+    )

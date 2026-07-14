@@ -1,130 +1,224 @@
 {% extends "monitor/base.html" %}
 
-{% block page_title %}Reports{% endblock %}
+{% block title %}
+    Reports | Customer Sentiment
+{% endblock %}
 
-{% block extra_css %}
-<style>
-    .report-card {
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    .report-header {
-        background: linear-gradient(135deg, #4361ee, #3f37c9);
-        color: white;
-        border-radius: 10px 10px 0 0 !important;
-    }
-    .form-label {
-        font-weight: 600;
-        margin-bottom: 0.5rem;
-    }
-    .input-group-text {
-        background-color: #f8f9fa;
-    }
-</style>
+{% block page_title %}
+    Reports
 {% endblock %}
 
 {% block content %}
-<div class="container py-4">
-    <div class="row justify-content-center">
-        <div class="col-lg-8">
-            <div class="card report-card">
-                <div class="card-header report-header">
-                    <h5 class="mb-0">Generate Custom Report</h5>
-                </div>
-                <div class="card-body">
-                    <form method="post" action="{% url 'reports' %}">
-                        {% csrf_token %}
-                        
-                        <!-- Report Type Selection -->
-                        <div class="mb-4">
-                            <label class="form-label">Report Type</label>
-                            <select name="report_type" class="form-select" id="reportType" required>
-                                <option value="" disabled selected>Select report type</option>
-                                <option value="summary">Summary Report (Excel with charts)</option>
-                                <option value="emotions">Emotion Analysis (Charts)</option>
-                                <option value="visitors">Visitor Statistics (Graphs)</option>
-                                {% if request.user.is_superuser %}
-                                <option value="branch">Branch Performance (Admin only)</option>
-                                {% endif %}
-                            </select>
-                        </div>
+<div class="bento-grid">
+    <section class="bento-card accent-card span-5">
+        <div class="icon-box mb-4">
+            <i class="bi bi-file-earmark-spreadsheet"></i>
+        </div>
 
-                        <!-- Date Range -->
-                        <div class="mb-4">
-                            <label class="form-label">Date Range</label>
-                            <div class="input-group">
-                                <input type="date" name="date_from" class="form-control" required>
-                                <span class="input-group-text">to</span>
-                                <input type="date" name="date_to" class="form-control" required>
-                            </div>
-                        </div>
+        <div class="bento-kicker">
+            Secure data export
+        </div>
 
-                        <!-- Branch Filter (for non-admin users) -->
-                        {% if not request.user.is_superuser and request.user.branch %}
-                        <input type="hidden" name="branch" value="{{ request.user.branch.id }}">
-                        {% elif request.user.is_superuser %}
-                        <div class="mb-4">
-                            <label class="form-label">Branch Filter (optional)</label>
-                            <select name="branch" class="form-select">
-                                <option value="">All Branches</option>
-                                {% for branch in branches %}
-                                <option value="{{ branch.id }}">{{ branch.name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
+        <h2 class="fw-bold mb-3">
+            Build a sentiment report
+        </h2>
+
+        <p class="text-soft mb-0">
+            Export visitor and emotion data for a selected period.
+            Tenant restrictions are automatically applied.
+        </p>
+
+        <div class="mt-4 p-4 rounded-4 bg-black bg-opacity-25">
+            <div class="d-flex align-items-start gap-3">
+                <i class="bi bi-shield-check text-green fs-4"></i>
+
+                <div>
+                    <div class="fw-semibold mb-1">
+                        Access protected
+                    </div>
+
+                    <div class="text-faint small">
+                        {% if request.user.is_superuser %}
+                            Your platform account can export
+                            information across all banks.
+                        {% elif request.user.branch %}
+                            Your report is restricted to
+                            {{ request.user.branch.name }}
+                            under
+                            {{ request.user.bank.name }}.
+                        {% elif request.user.bank %}
+                            Your report is restricted to
+                            {{ request.user.bank.name }}.
                         {% endif %}
-
-                        <!-- Format Selection -->
-                        <div class="mb-4">
-                            <label class="form-label">Output Format</label>
-                            <div class="d-flex gap-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="format" id="formatPdf" value="pdf" checked>
-                                    <label class="form-check-label" for="formatPdf">PDF</label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="format" id="formatExcel" value="excel">
-                                    <label class="form-check-label" for="formatExcel">Excel</label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="format" id="formatCsv" value="csv">
-                                    <label class="form-check-label" for="formatCsv">CSV</label>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Additional Options -->
-                        <div class="mb-4" id="additionalOptions" style="display: none;">
-                            <label class="form-label">Additional Options</label>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="include_charts" id="includeCharts" checked>
-                                <label class="form-check-label" for="includeCharts">Include visualizations</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="group_by_week" id="groupByWeek">
-                                <label class="form-check-label" for="groupByWeek">Group data by week</label>
-                            </div>
-                        </div>
-
-                        <button type="submit" class="btn btn-primary w-100 py-2">
-                            <i class="bi bi-file-earmark-bar-graph me-2"></i>Generate Report
-                        </button>
-                    </form>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-</div>
+    </section>
 
-<script>
-    // Show/hide additional options based on report type
-    document.getElementById('reportType').addEventListener('change', function() {
-        const additionalOptions = document.getElementById('additionalOptions');
-        if (this.value === 'summary' || this.value === 'branch') {
-            additionalOptions.style.display = 'block';
-        } else {
-            additionalOptions.style.display = 'none';
-        }
-    });
-</script>
+    <section class="bento-card span-7">
+        <div class="section-header">
+            <div>
+                <h3 class="bento-title">
+                    Report configuration
+                </h3>
+
+                <div class="bento-subtitle">
+                    Select the records to include
+                </div>
+            </div>
+
+            <span class="status-chip text-green">
+                CSV
+            </span>
+        </div>
+
+        <form
+            method="post"
+            action="{% url 'reports' %}"
+        >
+            {% csrf_token %}
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label
+                        for="dateFrom"
+                        class="form-label"
+                    >
+                        Starting date
+                    </label>
+
+                    <input
+                        type="date"
+                        id="dateFrom"
+                        name="date_from"
+                        class="form-control"
+                        required
+                    >
+                </div>
+
+                <div class="col-md-6">
+                    <label
+                        for="dateTo"
+                        class="form-label"
+                    >
+                        Ending date
+                    </label>
+
+                    <input
+                        type="date"
+                        id="dateTo"
+                        name="date_to"
+                        class="form-control"
+                        required
+                    >
+                </div>
+            </div>
+
+            {% if request.user.branch_id %}
+                <input
+                    type="hidden"
+                    name="branch"
+                    value="{{ request.user.branch_id }}"
+                >
+            {% else %}
+                <div class="mb-4">
+                    <label class="form-label">
+                        Branch
+                    </label>
+
+                    <div
+                        class="dropdown ui-select"
+                        data-ui-select
+                    >
+                        <input
+                            type="hidden"
+                            name="branch"
+                            value=""
+                        >
+
+                        <button
+                            class="ui-select-toggle dropdown-toggle"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false"
+                        >
+                            <span data-ui-select-label>
+                                All permitted branches
+                            </span>
+
+                            <i class="bi bi-chevron-down ui-select-chevron"></i>
+                        </button>
+
+                        <div class="dropdown-menu ui-select-menu">
+                            <button
+                                type="button"
+                                class="ui-select-option active"
+                                data-ui-select-option
+                                data-value=""
+                                data-label="All permitted branches"
+                            >
+                                All permitted branches
+                            </button>
+
+                            {% for branch in branches %}
+                                <button
+                                    type="button"
+                                    class="ui-select-option"
+                                    data-ui-select-option
+                                    data-value="{{ branch.id }}"
+                                    data-label="{% if request.user.is_superuser %}{{ branch.bank.code }} — {% endif %}{{ branch.name }}"
+                                >
+                                    {% if request.user.is_superuser %}
+                                        {{ branch.bank.code }} —
+                                    {% endif %}
+
+                                    {{ branch.name }}
+                                </button>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="form-text mt-2">
+                        Branches outside your assigned bank are
+                        never included.
+                    </div>
+                </div>
+            {% endif %}
+
+            <input
+                type="hidden"
+                name="format"
+                value="csv"
+            >
+
+            <div class="p-3 mb-4 rounded-4 bg-black bg-opacity-25 border border-secondary-subtle">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="icon-box text-green">
+                        <i class="bi bi-filetype-csv"></i>
+                    </div>
+
+                    <div>
+                        <div class="fw-semibold">
+                            CSV spreadsheet
+                        </div>
+
+                        <div class="text-faint small">
+                            Compatible with Excel, Google Sheets
+                            and data-analysis software.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button
+                type="submit"
+                class="btn btn-primary w-100"
+            >
+                <i class="bi bi-download me-2"></i>
+                Generate report
+            </button>
+        </form>
+    </section>
+</div>
 {% endblock %}

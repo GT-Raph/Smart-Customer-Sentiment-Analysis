@@ -1,343 +1,570 @@
 {% extends "monitor/base.html" %}
-{% load static %}
 
-{% block page_title %}{{ branch.name }} - Branch Details{% endblock %}
+{% block title %}
+    {{ branch.name }} | Branch Details
+{% endblock %}
 
-{% block styles %}
+{% block page_title %}
+    Branch Details
+{% endblock %}
+
+{% block extra_css %}
 <style>
-    .badge-emotion {
-        font-size: 0.8rem;
-        padding: 0.4em 0.8em;
-        border-radius: 12px;
-    }
-    .badge-happy { background-color: #FFD166; color: #000; }
-    .badge-neutral { background-color: #8A8A8A; color: #fff; }
-    .badge-sad { background-color: #118AB2; color: #fff; }
-    .badge-angry { background-color: #EF476F; color: #fff; }
-    .badge-surprise { background-color: #8338EC; color: #fff; }
-    .badge-unknown { background-color: #6C757D; color: #fff; }
-    
-    .chart-container {
-        position: relative;
-        height: 300px;
-    }
-    
-    .card {
-        border: none;
-        border-radius: 12px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-        margin-bottom: 1.5rem;
-    }
-    
-    .card-header {
-        background-color: #fff;
-        border-bottom: 1px solid rgba(0,0,0,0.08);
-        padding: 1.25rem 1.5rem;
+    .visitor-photo {
+        width: 54px;
+        height: 54px;
+
+        object-fit: cover;
+
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 15px;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <!-- Header -->
-    <div class="row mb-4">
-        <div class="col">
-            <div class="d-flex justify-content-between align-items-center">
-                <h4 class="mb-0"><i class="fas fa-building text-primary me-2"></i>{{ branch.name }} - Branch Analytics</h4>
-                <span class="badge bg-light text-dark">
-                    <i class="fas fa-code me-1"></i>Prefix: {{ branch.pc_prefix }}
-                </span>
+<div class="bento-grid">
+    <section class="bento-card accent-card span-8">
+        <div class="d-flex align-items-start gap-3">
+            <div class="icon-box">
+                <i class="bi bi-building"></i>
             </div>
-            {% if branch.location %}
-            <p class="text-muted mb-0">
-                <i class="fas fa-map-marker-alt me-1"></i>{{ branch.location }}
-            </p>
+
+            <div>
+                <div class="bento-kicker">
+                    Branch profile
+                </div>
+
+                <h2 class="fw-bold mb-2">
+                    {{ branch.name }}
+                </h2>
+
+                <div class="text-soft">
+                    {{ branch.bank.name }}
+                    ·
+                    Code {{ branch.code }}
+                    ·
+                    PC prefix {{ branch.pc_prefix }}
+                </div>
+
+                {% if branch.location %}
+                    <div class="text-faint mt-2">
+                        <i class="bi bi-geo-alt me-1"></i>
+                        {{ branch.location }}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <section class="bento-card span-2">
+        <div class="metric-label">
+            Total detections
+        </div>
+
+        <div class="metric-value">
+            {{ total_emotions }}
+        </div>
+    </section>
+
+    <section class="bento-card span-2">
+        <div class="metric-label">
+            Emotions tracked
+        </div>
+
+        <div class="metric-value">
+            {{ emotion_dist|length }}
+        </div>
+    </section>
+
+    <section class="bento-card span-4">
+        <div class="section-header">
+            <div>
+                <h3 class="bento-title">
+                    Emotion distribution
+                </h3>
+
+                <div class="bento-subtitle">
+                    All branch detections
+                </div>
+            </div>
+
+            <div class="icon-box">
+                <i class="bi bi-pie-chart"></i>
+            </div>
+        </div>
+
+        <div class="chart-wrapper">
+            <div class="chart-canvas-shell">
+                <canvas id="branchEmotionChart"></canvas>
+
+                <div
+                    class="chart-empty-state"
+                    id="branchEmotionEmpty"
+                >
+                    <div class="chart-empty-icon">
+                        <i class="bi bi-pie-chart"></i>
+                    </div>
+
+                    <div class="chart-empty-title">
+                        No emotion data
+                    </div>
+
+                    <div class="chart-empty-text">
+                        This branch has no processed emotion records.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="bento-card span-8">
+        <div class="section-header">
+            <div>
+                <h3 class="bento-title">
+                    Hourly visit activity
+                </h3>
+
+                <div class="bento-subtitle">
+                    Detections recorded today
+                </div>
+            </div>
+
+            <span class="status-chip">
+                Today
+            </span>
+        </div>
+
+        <div class="chart-wrapper">
+            <div class="chart-canvas-shell">
+                <canvas id="hourlyVisitsChart"></canvas>
+
+                <div
+                    class="chart-empty-state"
+                    id="hourlyVisitsEmpty"
+                >
+                    <div class="chart-empty-icon">
+                        <i class="bi bi-bar-chart"></i>
+                    </div>
+
+                    <div class="chart-empty-title">
+                        No visits today
+                    </div>
+
+                    <div class="chart-empty-text">
+                        Hourly activity appears after captures are processed.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="bento-card span-12">
+        <div class="section-header">
+            <div>
+                <h3 class="bento-title">
+                    Hourly positivity
+                </h3>
+
+                <div class="bento-subtitle">
+                    Percentage of happy detections per hour
+                </div>
+            </div>
+
+            {% if request.user.is_bank_admin %}
+                <a
+                    href="{% url 'branch_overview' %}"
+                    class="btn btn-outline-primary"
+                >
+                    <i class="bi bi-arrow-left me-1"></i>
+                    Branches
+                </a>
             {% endif %}
         </div>
-    </div>
 
-    <div class="row mb-4">
-        <!-- Branch Info Card -->
-        <div class="col-xl-4 col-md-6 mb-4">
-            <div class="card h-100">
-                <div class="card-header">
-                    <h6 class="mb-0"><i class="fas fa-info-circle me-2 text-primary"></i>Branch Information</h6>
-                </div>
-                <div class="card-body">
-                    <div class="text-center mb-4">
-                        <div class="icon-container bg-primary bg-opacity-10 d-inline-flex p-3 rounded-circle mb-3">
-                            <i class="fas fa-building fa-2x text-primary"></i>
-                        </div>
-                        <h5>{{ branch.name }}</h5>
-                        <p class="text-muted mb-2">
-                            <i class="fas fa-code me-1"></i>Prefix: {{ branch.pc_prefix }}
-                        </p>
-                        {% if branch.location %}
-                        <p class="text-muted">
-                            <i class="fas fa-map-marker-alt me-1"></i>{{ branch.location }}
-                        </p>
-                        {% endif %}
+        <div class="chart-wrapper">
+            <div class="chart-canvas-shell">
+                <canvas id="positivityChart"></canvas>
+
+                <div
+                    class="chart-empty-state"
+                    id="positivityEmpty"
+                >
+                    <div class="chart-empty-icon">
+                        <i class="bi bi-graph-up"></i>
                     </div>
 
-                    <div class="d-flex justify-content-around border-top pt-3">
-                        <div class="text-center">
-                            <h3 class="mb-0 text-primary">{{ total_emotions }}</h3>
-                            <small class="text-muted">Total Detections</small>
-                        </div>
-                        <div class="text-center">
-                            <h3 class="mb-0 text-info">{{ emotion_dist|length }}</h3>
-                            <small class="text-muted">Emotions Tracked</small>
-                        </div>
+                    <div class="chart-empty-title">
+                        No positivity data
+                    </div>
+
+                    <div class="chart-empty-text">
+                        Positivity percentages appear after happy
+                        emotions are detected.
                     </div>
                 </div>
             </div>
         </div>
+    </section>
 
-        <!-- Emotion Distribution Chart -->
-        <div class="col-xl-8 col-md-6 mb-4">
-            <div class="card h-100">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0"><i class="fas fa-chart-pie me-2 text-primary"></i>Emotion Distribution</h6>
-                    <span class="badge bg-light text-dark">
-                        <i class="fas fa-calendar me-1"></i>All Time
-                    </span>
-                </div>
-                <div class="card-body">
-                    <div class="chart-container">
-                        <canvas id="emotionChart"></canvas>
-                    </div>
+    <section class="bento-card span-12 p-0">
+        <div class="section-header p-4 mb-0">
+            <div>
+                <h3 class="bento-title">
+                    Recent captures
+                </h3>
+
+                <div class="bento-subtitle">
+                    Images are accessible only to authorised
+                    users in this bank.
                 </div>
             </div>
-        </div>
-    </div>
 
-    <!-- Charts Row -->
-    <div class="row mb-4">
-        <!-- Hourly Activity -->
-        <div class="col-xl-6 col-md-6 mb-4">
-            <div class="card h-100">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0"><i class="fas fa-clock me-2 text-primary"></i>Hourly Activity</h6>
-                    <span class="badge bg-light text-dark">
-                        <i class="fas fa-calendar-day me-1"></i>Today
-                    </span>
-                </div>
-                <div class="card-body">
-                    <div class="chart-container">
-                        <canvas id="hourlyChart"></canvas>
-                    </div>
-                </div>
+            <div class="icon-box">
+                <i class="bi bi-camera"></i>
             </div>
         </div>
 
-        <!-- Positivity by Hour -->
-        <div class="col-xl-6 col-md-6 mb-4">
-            <div class="card h-100">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0"><i class="fas fa-smile me-2 text-primary"></i>Positivity by Hour</h6>
-                    <span class="badge bg-light text-dark">
-                        <i class="fas fa-trending-up me-1"></i>Score
-                    </span>
-                </div>
-                <div class="card-body">
-                    <div class="chart-container">
-                        <canvas id="positivityChart"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th class="ps-4">
+                            Image
+                        </th>
 
-    <!-- Recent Visits Table -->
-    {% comment %} <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0"><i class="fas fa-history me-2 text-primary"></i>Recent Visits</h6>
-                    <a href="#" class="btn btn-sm btn-outline-primary">
-                        <i class="fas fa-eye me-1"></i>View All
-                    </a>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead>
-                                <tr>
-                                    <th><i class="fas fa-user me-1"></i> Face ID</th>
-                                    <th><i class="fas fa-smile me-1"></i> Emotion</th>
-                                    <th><i class="fas fa-clock me-1"></i> Timestamp</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for visit in visits %}
-                                <tr>
-                                    <td>
-                                        <span class="badge bg-light text-dark">
-                                            <i class="fas fa-user me-1"></i>
-                                            {% if visit.visitor and visit.visitor.face_id %}
-                                                {{ visit.visitor.face_id }}
-                                            {% else %}
-                                                Unknown
-                                            {% endif %}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <span class="badge badge-emotion 
-                                            {% if visit.emotion == 'happy' %}badge-happy
-                                            {% elif visit.emotion == 'neutral' %}badge-neutral
-                                            {% elif visit.emotion == 'sad' %}badge-sad
-                                            {% elif visit.emotion == 'angry' %}badge-angry
-                                            {% elif visit.emotion == 'surprise' %}badge-surprise
-                                            {% else %}badge-unknown{% endif %}">
-                                            <i class="fas 
-                                                {% if visit.emotion == 'happy' %}fa-smile
-                                                {% elif visit.emotion == 'neutral' %}fa-meh
-                                                {% elif visit.emotion == 'sad' %}fa-sad-tear
-                                                {% elif visit.emotion == 'angry' }}fa-angry
-                                                {% elif visit.emotion == 'surprise' %}fa-surprise
-                                                {% else %}fa-question{% endif %} me-1">
-                                            </i>
-                                            {{ visit.emotion|title|default:"Unknown" }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <span class="text-muted">
-                                            <i class="fas fa-clock me-1"></i>{{ visit.timestamp|date:"M d, Y H:i" }}
-                                        </span>
-                                    </td>
-                                </tr>
-                                {% empty %}
-                                <tr>
-                                    <td colspan="3" class="text-center py-4 text-muted">
-                                        <i class="fas fa-inbox fa-2x mb-2"></i>
-                                        <p>No visits recorded yet</p>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+                        <th>
+                            Visitor
+                        </th>
+
+                        <th>
+                            Emotion
+                        </th>
+
+                        <th>
+                            Confidence
+                        </th>
+
+                        <th>
+                            Computer
+                        </th>
+
+                        <th>
+                            Time
+                        </th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for visit in visits %}
+                        <tr>
+                            <td class="ps-4">
+                                <a
+                                    href="{% url 'snapshot_image' visit.id %}"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    <img
+                                        src="{% url 'snapshot_image' visit.id %}"
+                                        class="visitor-photo"
+                                        alt="Captured visitor"
+                                        loading="lazy"
+                                    >
+                                </a>
+                            </td>
+
+                            <td>
+                                <code class="px-2 py-1">
+                                    {{ visit.visitor.face_id }}
+                                </code>
+                            </td>
+
+                            <td>
+                                <span class="emotion-chip emotion-{{ visit.emotion }}">
+                                    {{ visit.emotion|default:"Unknown" }}
+                                </span>
+                            </td>
+
+                            <td>
+                                {% if visit.confidence != None %}
+                                    {{ visit.confidence|floatformat:1 }}%
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {{ visit.pc_name }}
+                            </td>
+
+                            <td>
+                                {{ visit.timestamp|date:"M d, Y H:i:s" }}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="6">
+                                <div class="empty-state">
+                                    <i class="bi bi-inbox"></i>
+
+                                    <h5>
+                                        No captures recorded
+                                    </h5>
+
+                                    <p class="text-faint mb-0">
+                                        This branch does not yet have
+                                        sentiment records.
+                                    </p>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
-    </div> {% endcomment %}
+    </section>
 </div>
 {% endblock %}
 
 {% block chart_scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Emotion Distribution Chart
-        const emotionCtx = document.getElementById('emotionChart').getContext('2d');
-        const emotionChart = new Chart(emotionCtx, {
-            type: 'doughnut',
-            data: {
-                labels: {{ emotion_labels|safe }},
-                datasets: [{
-                    data: {{ emotion_counts|safe }},
-                    backgroundColor: {{ emotion_colors|safe }},
-                    borderWidth: 2,
-                    borderColor: '#ffffff',
-                    hoverOffset: 15
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'right',
-                        labels: {
-                            padding: 20,
-                            usePointStyle: true
-                        }
-                    }
-                },
-                cutout: '60%'
-            }
-        });
+    document.addEventListener(
+        "DOMContentLoaded",
+        function () {
+            const Charts =
+                window.SentimentCharts;
 
-        // Hourly Activity Chart
-        const hourlyCtx = document.getElementById('hourlyChart').getContext('2d');
-        const hourlyChart = new Chart(hourlyCtx, {
-            type: 'bar',
-            data: {
-                labels: {{ hourly_labels|safe }},
-                datasets: [{
-                    label: 'Visits per Hour',
-                    data: {{ hourly_visits|safe }},
-                    backgroundColor: 'rgba(52, 152, 219, 0.8)',
-                    borderRadius: 6,
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        grid: {
-                            color: 'rgba(0, 0, 0, 0.05)'
-                        }
-                    },
-                    x: {
-                        grid: {
-                            display: false
-                        }
-                    }
-                }
-            }
-        });
+            const emotionLabels =
+                {{ emotion_labels|default:"[]"|safe }};
 
-        // Positivity Chart
-        const posCtx = document.getElementById('positivityChart').getContext('2d');
-        const posChart = new Chart(posCtx, {
-            type: 'line',
-            data: {
-                labels: {{ hourly_labels|safe }},
-                datasets: [{
-                    label: 'Positivity Score',
-                    data: {{ hourly_positivity|safe }},
-                    borderColor: '#FFD166',
-                    backgroundColor: 'rgba(255, 209, 102, 0.15)',
-                    tension: 0.4,
-                    borderWidth: 3,
-                    pointRadius: 5,
-                    pointHoverRadius: 7,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        min: 0,
-                        max: 100,
-                        grid: {
-                            color: 'rgba(0, 0, 0, 0.05)'
+            const emotionCounts =
+                {{ emotion_counts|default:"[]"|safe }};
+
+            const emotionColors =
+                {{ emotion_colors|default:"[]"|safe }};
+
+            const hourlyLabels =
+                {{ hourly_labels|default:"[]"|safe }};
+
+            const hourlyVisits =
+                {{ hourly_visits|default:"[]"|safe }};
+
+            const hourlyPositivity =
+                {{ hourly_positivity|default:"[]"|safe }};
+
+            /*
+             * Distribution
+             */
+
+            const emotionHasData =
+                Charts.hasData(
+                    emotionCounts
+                );
+
+            Charts.setEmptyState(
+                "branchEmotionChart",
+                "branchEmotionEmpty",
+                emotionHasData
+            );
+
+            if (emotionHasData) {
+                new Chart(
+                    document.getElementById(
+                        "branchEmotionChart"
+                    ),
+                    {
+                        type: "doughnut",
+
+                        data: {
+                            labels: emotionLabels,
+
+                            datasets: [{
+                                data: emotionCounts,
+                                backgroundColor: emotionColors,
+                                borderColor: "#121824",
+                                borderWidth: 4,
+                                hoverOffset: 9,
+                                spacing: 2
+                            }]
                         },
-                        ticks: {
-                            callback: function(value) {
-                                return value + '%';
+
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            cutout: "71%",
+
+                            plugins: {
+                                legend: Charts.legend(
+                                    "bottom"
+                                ),
+
+                                tooltip: Charts.tooltip()
                             }
                         }
-                    },
-                    x: {
-                        grid: {
-                            display: false
+                    }
+                );
+            }
+
+            /*
+             * Hourly visits
+             */
+
+            const hourlyVisitsHaveData =
+                Charts.hasData(
+                    hourlyVisits
+                );
+
+            Charts.setEmptyState(
+                "hourlyVisitsChart",
+                "hourlyVisitsEmpty",
+                hourlyVisitsHaveData
+            );
+
+            if (hourlyVisitsHaveData) {
+                new Chart(
+                    document.getElementById(
+                        "hourlyVisitsChart"
+                    ),
+                    {
+                        type: "bar",
+
+                        data: {
+                            labels: hourlyLabels,
+
+                            datasets: [{
+                                label: "Detections",
+                                data: hourlyVisits,
+                                backgroundColor:
+                                    Charts.rgba(
+                                        Charts.colors.purple,
+                                        0.75
+                                    ),
+                                borderColor:
+                                    Charts.colors.purple,
+                                borderWidth: 1,
+                                borderRadius: 7,
+                                borderSkipped: false,
+                                maxBarThickness: 32
+                            }]
+                        },
+
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+
+                            plugins: {
+                                legend: {
+                                    display: false
+                                },
+
+                                tooltip: Charts.tooltip()
+                            },
+
+                            scales: {
+                                x: Charts.xScale(
+                                    false
+                                ),
+
+                                y: Charts.yScale(
+                                    false
+                                )
+                            }
                         }
                     }
-                }
+                );
             }
-        });
-    });
+
+            /*
+             * Positivity
+             */
+
+            const positivityHasData =
+                Charts.hasData(
+                    hourlyPositivity
+                );
+
+            Charts.setEmptyState(
+                "positivityChart",
+                "positivityEmpty",
+                positivityHasData
+            );
+
+            if (positivityHasData) {
+                new Chart(
+                    document.getElementById(
+                        "positivityChart"
+                    ),
+                    {
+                        type: "line",
+
+                        data: {
+                            labels: hourlyLabels,
+
+                            datasets: [{
+                                label: "Happy detections",
+                                data: hourlyPositivity,
+                                borderColor:
+                                    Charts.colors.green,
+                                backgroundColor:
+                                    Charts.rgba(
+                                        Charts.colors.green,
+                                        0.08
+                                    ),
+                                borderWidth: 2.5,
+                                tension: 0.38,
+                                fill: true,
+                                pointRadius: 0,
+                                pointHoverRadius: 5,
+                                pointHitRadius: 12
+                            }]
+                        },
+
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+
+                            interaction: {
+                                mode: "index",
+                                intersect: false
+                            },
+
+                            plugins: {
+                                legend: Charts.legend(
+                                    "bottom"
+                                ),
+
+                                tooltip: Charts.tooltip()
+                            },
+
+                            scales: {
+                                x: Charts.xScale(
+                                    false
+                                ),
+
+                                y: {
+                                    ...Charts.yScale(
+                                        false,
+                                        100
+                                    ),
+
+                                    ticks: {
+                                        color: "#778298",
+                                        padding: 9,
+
+                                        callback: function (
+                                            value
+                                        ) {
+                                            return value + "%";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                );
+            }
+        }
+    );
 </script>
 {% endblock %}

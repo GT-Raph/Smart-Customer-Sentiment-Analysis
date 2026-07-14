@@ -1,41 +1,1517 @@
 {% extends "monitor/base.html" %}
 
-{% block page_title %}Settings{% endblock %}
+{% block title %}
+    Settings
+{% endblock %}
+
+{% block page_title %}
+    Settings
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .settings-form-grid {
+        display: grid;
+        grid-template-columns:
+            repeat(2, minmax(0, 1fr));
+        gap: 16px;
+    }
+
+    .settings-form-grid .full-width {
+        grid-column: 1 / -1;
+    }
+
+    .settings-switch-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 18px;
+
+        padding: 17px 0;
+
+        border-bottom:
+            1px solid var(--border);
+    }
+
+    .settings-switch-row:last-child {
+        border-bottom: 0;
+    }
+
+    .settings-switch-title {
+        color: white;
+        font-size: 0.82rem;
+        font-weight: 700;
+    }
+
+    .settings-switch-text {
+        max-width: 430px;
+        margin-top: 4px;
+
+        color: var(--text-muted);
+        font-size: 0.72rem;
+    }
+
+    .form-check-input {
+        width: 2.4rem;
+        height: 1.25rem;
+
+        cursor: pointer;
+
+        background-color:
+            rgba(255, 255, 255, 0.08);
+
+        border-color: var(--border-strong);
+    }
+
+    .form-check-input:checked {
+        background-color: var(--purple);
+        border-color: var(--purple);
+    }
+
+    .form-check-input:focus {
+        border-color: var(--purple);
+
+        box-shadow:
+            0 0 0 4px
+            rgba(124, 92, 255, 0.12);
+    }
+
+    .form-errors {
+        padding: 12px 14px;
+        margin-bottom: 16px;
+
+        color: #ffadbd;
+        font-size: 0.73rem;
+
+        background:
+            rgba(255, 94, 125, 0.08);
+
+        border:
+            1px solid
+            rgba(255, 94, 125, 0.22);
+
+        border-radius: 13px;
+    }
+
+    .form-errors ul {
+        margin: 0;
+        padding-left: 18px;
+    }
+
+    .access-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 13px;
+
+        padding: 15px;
+
+        background:
+            rgba(0, 0, 0, 0.18);
+
+        border: 1px solid var(--border);
+        border-radius: 16px;
+    }
+
+    .access-row + .access-row {
+        margin-top: 11px;
+    }
+
+    .access-row-icon {
+        width: 37px;
+        height: 37px;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        flex-shrink: 0;
+
+        color: var(--green);
+
+        background:
+            rgba(50, 214, 154, 0.08);
+
+        border:
+            1px solid
+            rgba(50, 214, 154, 0.17);
+
+        border-radius: 12px;
+    }
+
+    .computer-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+
+        min-height: 29px;
+        padding: 0 10px;
+
+        font-size: 0.69rem;
+        font-weight: 750;
+
+        border-radius: 999px;
+    }
+
+    .computer-status.online {
+        color: #aef3d3;
+
+        background:
+            rgba(50, 214, 154, 0.08);
+
+        border:
+            1px solid
+            rgba(50, 214, 154, 0.19);
+    }
+
+    .computer-status.offline {
+        color: #ffacba;
+
+        background:
+            rgba(255, 94, 125, 0.08);
+
+        border:
+            1px solid
+            rgba(255, 94, 125, 0.19);
+    }
+
+    .computer-status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+    }
+
+    .online .computer-status-dot {
+        background: var(--green);
+    }
+
+    .offline .computer-status-dot {
+        background: var(--red);
+    }
+
+    .api-key-box {
+        position: relative;
+
+        padding: 18px;
+
+        background: #080d15;
+        border: 1px solid var(--border-strong);
+        border-radius: 16px;
+    }
+
+    .api-key-value {
+        padding-right: 50px;
+
+        color: var(--cyan);
+        font-family:
+            "Cascadia Code",
+            Consolas,
+            monospace;
+        font-size: 0.78rem;
+        word-break: break-all;
+    }
+
+    .api-copy-button {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+    }
+
+    .branch-settings-item {
+        overflow: hidden;
+
+        background:
+            rgba(0, 0, 0, 0.15);
+
+        border: 1px solid var(--border);
+        border-radius: 17px;
+    }
+
+    .branch-settings-item + .branch-settings-item {
+        margin-top: 12px;
+    }
+
+    .branch-settings-item summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 15px;
+
+        padding: 17px 18px;
+
+        cursor: pointer;
+        list-style: none;
+    }
+
+    .branch-settings-item summary::-webkit-details-marker {
+        display: none;
+    }
+
+    .branch-settings-item[open] summary {
+        border-bottom:
+            1px solid var(--border);
+    }
+
+    .branch-settings-body {
+        padding: 18px;
+    }
+
+    .bank-code {
+        display: inline-flex;
+
+        padding: 5px 8px;
+
+        color: var(--cyan);
+        font-family: monospace;
+        font-size: 0.68rem;
+
+        background:
+            rgba(53, 215, 220, 0.07);
+
+        border-radius: 8px;
+    }
+
+    @media (max-width: 767.98px) {
+        .settings-form-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .settings-form-grid .full-width {
+            grid-column: auto;
+        }
+
+        .settings-switch-row {
+            align-items: center;
+        }
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-6 mx-auto">
-        <div class="card">
-            <div class="card-header">
-                <h6 class="mb-0">User Preferences</h6>
+<div class="bento-grid">
+    {% if new_api_key %}
+        <section class="bento-card accent-card span-12">
+            <div class="section-header">
+                <div>
+                    <div class="bento-kicker">
+                        API key generated
+                    </div>
+
+                    <h3 class="bento-title">
+                        Copy this key now
+                    </h3>
+
+                    <div class="bento-subtitle">
+                        This is the only time the raw key
+                        will be displayed.
+                    </div>
+                </div>
+
+                <span class="status-chip text-yellow">
+                    One-time display
+                </span>
             </div>
-            <div class="card-body">
-                <form method="post">
-                    {% csrf_token %}
-                    <div class="mb-3">
-                        <div class="form-check form-switch">
-                           <input class="form-check-input" type="checkbox" id="darkMode" name="dark_mode" 
-                                {% if request.user.userprofile.dark_mode %}checked{% endif %}>
-                            <label class="form-check-label" for="darkMode">Dark Mode</label>
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Email Notifications</label>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="notifyWeekly" name="notify_weekly" 
-                                   {% if request.user.userprofile.notify_weekly %}checked{% endif %}>
-                            <label class="form-check-label" for="notifyWeekly">Weekly Summary</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="notifyNegative" name="notify_negative" 
-                                   {% if request.user.userprofile.notify_negative %}checked{% endif %}>
-                            <label class="form-check-label" for="notifyNegative">Negative Emotion Alerts</label>
-                        </div>
-                    </div>
-                    <button type="submit" class="btn btn-primary">Save Settings</button>
-                </form>
+
+            <div class="mb-3">
+                <strong>
+                    {{ new_api_key.bank_name }}
+                </strong>
+
+                <span class="bank-code ms-2">
+                    {{ new_api_key.bank_code }}
+                </span>
+            </div>
+
+            <div class="api-key-box">
+                <div
+                    class="api-key-value"
+                    id="newApiKey"
+                >
+                    {{ new_api_key.raw_key }}
+                </div>
+
+                <button
+                    type="button"
+                    class="btn btn-outline-primary btn-sm api-copy-button"
+                    id="copyApiKey"
+                >
+                    <i class="bi bi-copy"></i>
+                </button>
+            </div>
+
+            <div class="text-faint small mt-3">
+                Place this value in the bank computer's
+                <code>BANK_API_KEY</code> setting.
+            </div>
+        </section>
+    {% endif %}
+
+    <section class="bento-card accent-card span-6">
+        <div class="bento-kicker">
+            Account profile
+        </div>
+
+        <div class="d-flex align-items-start gap-3">
+            <span class="user-avatar">
+                {{ request.user.username|first }}
+            </span>
+
+            <div>
+                <h2 class="fw-bold mb-1">
+                    {{ request.user.username }}
+                </h2>
+
+                <div class="text-soft">
+                    {% if request.user.is_superuser %}
+                        Platform administrator
+                    {% elif request.user.branch %}
+                        Branch user ·
+                        {{ request.user.branch.name }}
+                    {% elif request.user.bank %}
+                        Bank administrator ·
+                        {{ request.user.bank.name }}
+                    {% endif %}
+                </div>
+
+                <div class="text-faint small mt-2">
+                    Last login:
+                    {{ request.user.last_login|date:"M d, Y H:i"|default:"First login" }}
+                </div>
             </div>
         </div>
-    </div>
+
+        <form
+            method="post"
+            class="mt-4"
+        >
+            {% csrf_token %}
+
+            <input
+                type="hidden"
+                name="action"
+                value="profile"
+            >
+
+            {% if profile_form.errors %}
+                <div class="form-errors">
+                    {{ profile_form.errors }}
+                </div>
+            {% endif %}
+
+            <div class="settings-form-grid">
+                <div>
+                    <label class="form-label">
+                        First name
+                    </label>
+
+                    {{ profile_form.first_name }}
+                </div>
+
+                <div>
+                    <label class="form-label">
+                        Last name
+                    </label>
+
+                    {{ profile_form.last_name }}
+                </div>
+
+                <div class="full-width">
+                    <label class="form-label">
+                        Email address
+                    </label>
+
+                    {{ profile_form.email }}
+                </div>
+            </div>
+
+            <button
+                type="submit"
+                class="btn btn-primary mt-4"
+            >
+                Save profile
+            </button>
+        </form>
+    </section>
+
+    <section class="bento-card span-6">
+        <div class="section-header">
+            <div>
+                <h3 class="bento-title">
+                    Password and security
+                </h3>
+
+                <div class="bento-subtitle">
+                    Update your login password
+                </div>
+            </div>
+
+            <div class="icon-box">
+                <i class="bi bi-shield-lock"></i>
+            </div>
+        </div>
+
+        <form method="post">
+            {% csrf_token %}
+
+            <input
+                type="hidden"
+                name="action"
+                value="password"
+            >
+
+            {% if password_form.errors %}
+                <div class="form-errors">
+                    {{ password_form.errors }}
+                </div>
+            {% endif %}
+
+            <div class="d-grid gap-3">
+                <div>
+                    <label class="form-label">
+                        Current password
+                    </label>
+
+                    {{ password_form.old_password }}
+                </div>
+
+                <div>
+                    <label class="form-label">
+                        New password
+                    </label>
+
+                    {{ password_form.new_password1 }}
+                </div>
+
+                <div>
+                    <label class="form-label">
+                        Confirm new password
+                    </label>
+
+                    {{ password_form.new_password2 }}
+                </div>
+            </div>
+
+            <button
+                type="submit"
+                class="btn btn-primary mt-4"
+            >
+                Change password
+            </button>
+        </form>
+    </section>
+
+    <section class="bento-card span-7">
+        <div class="section-header">
+            <div>
+                <h3 class="bento-title">
+                    Dashboard preferences
+                </h3>
+
+                <div class="bento-subtitle">
+                    Your default dashboard behaviour
+                </div>
+            </div>
+
+            <div class="icon-box">
+                <i class="bi bi-grid"></i>
+            </div>
+        </div>
+
+        <form method="post">
+            {% csrf_token %}
+
+            <input
+                type="hidden"
+                name="action"
+                value="dashboard"
+            >
+
+            {% if dashboard_form.errors %}
+                <div class="form-errors">
+                    {{ dashboard_form.errors }}
+                </div>
+            {% endif %}
+
+            <div class="settings-form-grid">
+                <div>
+                    <label class="form-label">
+                        Default period
+                    </label>
+
+                    <div
+                        class="dropdown ui-select"
+                        data-ui-select
+                    >
+                        <input
+                            type="hidden"
+                            name="dashboard-default_date_range"
+                            value="{{ preferences.default_date_range }}"
+                        >
+
+                        <button
+                            class="ui-select-toggle dropdown-toggle"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                        >
+                            <span data-ui-select-label>
+                                {{ preferences.get_default_date_range_display }}
+                            </span>
+
+                            <i class="bi bi-chevron-down ui-select-chevron"></i>
+                        </button>
+
+                        <div class="dropdown-menu ui-select-menu">
+                            <button
+                                type="button"
+                                class="ui-select-option {% if preferences.default_date_range == 'day' %}active{% endif %}"
+                                data-ui-select-option
+                                data-value="day"
+                                data-label="Today"
+                            >
+                                Today
+                            </button>
+
+                            <button
+                                type="button"
+                                class="ui-select-option {% if preferences.default_date_range == 'week' %}active{% endif %}"
+                                data-ui-select-option
+                                data-value="week"
+                                data-label="Last 7 days"
+                            >
+                                Last 7 days
+                            </button>
+
+                            <button
+                                type="button"
+                                class="ui-select-option {% if preferences.default_date_range == '14days' %}active{% endif %}"
+                                data-ui-select-option
+                                data-value="14days"
+                                data-label="Last 14 days"
+                            >
+                                Last 14 days
+                            </button>
+
+                            <button
+                                type="button"
+                                class="ui-select-option {% if preferences.default_date_range == 'month' %}active{% endif %}"
+                                data-ui-select-option
+                                data-value="month"
+                                data-label="Last 30 days"
+                            >
+                                Last 30 days
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="form-label">
+                        Hourly default
+                    </label>
+
+                    <div
+                        class="dropdown ui-select"
+                        data-ui-select
+                    >
+                        <input
+                            type="hidden"
+                            name="dashboard-default_hourly_range"
+                            value="{{ preferences.default_hourly_range }}"
+                        >
+
+                        <button
+                            class="ui-select-toggle dropdown-toggle"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                        >
+                            <span data-ui-select-label>
+                                {{ preferences.get_default_hourly_range_display }}
+                            </span>
+
+                            <i class="bi bi-chevron-down ui-select-chevron"></i>
+                        </button>
+
+                        <div class="dropdown-menu ui-select-menu">
+                            <button
+                                type="button"
+                                class="ui-select-option {% if preferences.default_hourly_range == 'today' %}active{% endif %}"
+                                data-ui-select-option
+                                data-value="today"
+                                data-label="Today"
+                            >
+                                Today
+                            </button>
+
+                            <button
+                                type="button"
+                                class="ui-select-option {% if preferences.default_hourly_range == 'yesterday' %}active{% endif %}"
+                                data-ui-select-option
+                                data-value="yesterday"
+                                data-label="Yesterday"
+                            >
+                                Yesterday
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="form-label">
+                        Default branch
+                    </label>
+
+                    <div
+                        class="dropdown ui-select"
+                        data-ui-select
+                    >
+                        <input
+                            type="hidden"
+                            name="dashboard-default_branch"
+                            value="{{ preferences.default_branch_id|default:'' }}"
+                        >
+
+                        <button
+                            class="ui-select-toggle dropdown-toggle"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                        >
+                            <span data-ui-select-label>
+                                {% if preferences.default_branch %}
+                                    {{ preferences.default_branch.name }}
+                                {% else %}
+                                    All permitted branches
+                                {% endif %}
+                            </span>
+
+                            <i class="bi bi-chevron-down ui-select-chevron"></i>
+                        </button>
+
+                        <div class="dropdown-menu ui-select-menu">
+                            <button
+                                type="button"
+                                class="ui-select-option {% if not preferences.default_branch_id %}active{% endif %}"
+                                data-ui-select-option
+                                data-value=""
+                                data-label="All permitted branches"
+                            >
+                                All permitted branches
+                            </button>
+
+                            {% for branch in preference_branches %}
+                                <button
+                                    type="button"
+                                    class="ui-select-option {% if preferences.default_branch_id == branch.id %}active{% endif %}"
+                                    data-ui-select-option
+                                    data-value="{{ branch.id }}"
+                                    data-label="{{ branch.name }}"
+                                >
+                                    {% if request.user.is_superuser %}
+                                        {{ branch.bank.code }} —
+                                    {% endif %}
+
+                                    {{ branch.name }}
+                                </button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="form-label">
+                        Auto refresh
+                    </label>
+
+                    <div
+                        class="dropdown ui-select"
+                        data-ui-select
+                    >
+                        <input
+                            type="hidden"
+                            name="dashboard-auto_refresh_seconds"
+                            value="{{ preferences.auto_refresh_seconds }}"
+                        >
+
+                        <button
+                            class="ui-select-toggle dropdown-toggle"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                        >
+                            <span data-ui-select-label>
+                                {{ preferences.get_auto_refresh_seconds_display }}
+                            </span>
+
+                            <i class="bi bi-chevron-down ui-select-chevron"></i>
+                        </button>
+
+                        <div class="dropdown-menu ui-select-menu">
+                            {% for value, label in dashboard_form.fields.auto_refresh_seconds.choices %}
+                                <button
+                                    type="button"
+                                    class="ui-select-option {% if preferences.auto_refresh_seconds|stringformat:'s' == value|stringformat:'s' %}active{% endif %}"
+                                    data-ui-select-option
+                                    data-value="{{ value }}"
+                                    data-label="{{ label }}"
+                                >
+                                    {{ label }}
+                                </button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <div class="settings-switch-row">
+                    <div>
+                        <div class="settings-switch-title">
+                            Compact bento layout
+                        </div>
+
+                        <div class="settings-switch-text">
+                            Reduce card padding and spacing
+                            throughout the dashboard.
+                        </div>
+                    </div>
+
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        name="dashboard-compact_mode"
+                        {% if preferences.compact_mode %}checked{% endif %}
+                    >
+                </div>
+
+                <div class="settings-switch-row">
+                    <div>
+                        <div class="settings-switch-title">
+                            Reduce animation
+                        </div>
+
+                        <div class="settings-switch-text">
+                            Minimise interface movement and
+                            chart transitions.
+                        </div>
+                    </div>
+
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        name="dashboard-reduce_motion"
+                        {% if preferences.reduce_motion %}checked{% endif %}
+                    >
+                </div>
+            </div>
+
+            <button
+                type="submit"
+                class="btn btn-primary mt-4"
+            >
+                Save dashboard preferences
+            </button>
+        </form>
+    </section>
+
+    <section class="bento-card span-5">
+        <div class="section-header">
+            <div>
+                <h3 class="bento-title">
+                    Alerts and summaries
+                </h3>
+
+                <div class="bento-subtitle">
+                    Configure emotion-alert rules
+                </div>
+            </div>
+
+            <div class="icon-box">
+                <i class="bi bi-bell"></i>
+            </div>
+        </div>
+
+        <form method="post">
+            {% csrf_token %}
+
+            <input
+                type="hidden"
+                name="action"
+                value="notifications"
+            >
+
+            {% if notification_form.errors %}
+                <div class="form-errors">
+                    {{ notification_form.errors }}
+                </div>
+            {% endif %}
+
+            <div class="settings-switch-row pt-0">
+                <div>
+                    <div class="settings-switch-title">
+                        Weekly email summary
+                    </div>
+
+                    <div class="settings-switch-text">
+                        Store this preference for the
+                        scheduled reporting service.
+                    </div>
+                </div>
+
+                {{ notification_form.email_weekly_summary }}
+            </div>
+
+            <div class="settings-switch-row">
+                <div>
+                    <div class="settings-switch-title">
+                        Negative-emotion alerts
+                    </div>
+
+                    <div class="settings-switch-text">
+                        Enable alerts when sad and angry
+                        detections exceed your threshold.
+                    </div>
+                </div>
+
+                {{ notification_form.notify_negative }}
+            </div>
+
+            <div class="settings-form-grid mt-4">
+                <div>
+                    <label class="form-label">
+                        Negative threshold (%)
+                    </label>
+
+                    {{ notification_form.negative_threshold }}
+                </div>
+
+                <div>
+                    <label class="form-label">
+                        Minimum detections
+                    </label>
+
+                    {{ notification_form.minimum_detections }}
+                </div>
+            </div>
+
+            <div class="text-faint small mt-3">
+                Example: alert only when negative
+                emotions reach 35% and there are at
+                least 20 detections.
+            </div>
+
+            <button
+                type="submit"
+                class="btn btn-primary mt-4"
+            >
+                Save alert preferences
+            </button>
+        </form>
+    </section>
+
+    <section class="bento-card span-4">
+        <div class="section-header">
+            <div>
+                <h3 class="bento-title">
+                    Access summary
+                </h3>
+
+                <div class="bento-subtitle">
+                    Your current tenant permissions
+                </div>
+            </div>
+
+            <div class="icon-box text-green">
+                <i class="bi bi-shield-check"></i>
+            </div>
+        </div>
+
+        <div class="access-row">
+            <div class="access-row-icon">
+                <i class="bi bi-bank"></i>
+            </div>
+
+            <div>
+                <div class="fw-semibold">
+                    Bank
+                </div>
+
+                <div class="text-faint small mt-1">
+                    {% if request.user.is_superuser %}
+                        All banks
+                    {% elif request.user.bank %}
+                        {{ request.user.bank.name }}
+                    {% else %}
+                        Not assigned
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="access-row">
+            <div class="access-row-icon">
+                <i class="bi bi-building"></i>
+            </div>
+
+            <div>
+                <div class="fw-semibold">
+                    Branch access
+                </div>
+
+                <div class="text-faint small mt-1">
+                    {% if request.user.is_superuser %}
+                        All branches
+                    {% elif request.user.branch %}
+                        {{ request.user.branch.name }}
+                    {% elif request.user.bank %}
+                        All branches in your bank
+                    {% else %}
+                        None
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="access-row">
+            <div class="access-row-icon">
+                <i class="bi bi-images"></i>
+            </div>
+
+            <div>
+                <div class="fw-semibold">
+                    Captured images
+                </div>
+
+                <div class="text-faint small mt-1">
+                    Protected by bank and branch
+                    access rules.
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="bento-card span-8 p-0">
+        <div class="section-header p-4 mb-0">
+            <div>
+                <h3 class="bento-title">
+                    Capture computers
+                </h3>
+
+                <div class="bento-subtitle">
+                    Computers observed through uploaded captures
+                </div>
+            </div>
+
+            <div class="icon-box">
+                <i class="bi bi-pc-display"></i>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th class="ps-4">
+                            Computer
+                        </th>
+
+                        <th>
+                            Branch
+                        </th>
+
+                        {% if request.user.is_superuser %}
+                            <th>
+                                Bank
+                            </th>
+                        {% endif %}
+
+                        <th>
+                            Prefix
+                        </th>
+
+                        <th>
+                            Last upload
+                        </th>
+
+                        <th>
+                            Captures
+                        </th>
+
+                        <th>
+                            Status
+                        </th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for computer in computer_rows %}
+                        <tr>
+                            <td class="ps-4">
+                                <code class="px-2 py-1">
+                                    {{ computer.pc_name }}
+                                </code>
+                            </td>
+
+                            <td>
+                                {{ computer.branch__name }}
+                            </td>
+
+                            {% if request.user.is_superuser %}
+                                <td>
+                                    {{ computer.bank__name }}
+                                </td>
+                            {% endif %}
+
+                            <td>
+                                {{ computer.branch__pc_prefix }}
+                            </td>
+
+                            <td>
+                                {{ computer.last_seen|timesince }}
+                                ago
+                            </td>
+
+                            <td>
+                                {{ computer.total_captures }}
+                            </td>
+
+                            <td>
+                                <span class="computer-status {% if computer.is_online %}online{% else %}offline{% endif %}">
+                                    <span class="computer-status-dot"></span>
+                                    {{ computer.status }}
+                                </span>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td
+                                colspan="{% if request.user.is_superuser %}7{% else %}6{% endif %}"
+                            >
+                                <div class="empty-state">
+                                    <i class="bi bi-pc-display-horizontal"></i>
+
+                                    <h5>
+                                        No capture computers found
+                                    </h5>
+
+                                    <p class="text-faint mb-0">
+                                        Computers will appear after
+                                        their first successful upload.
+                                    </p>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% if can_manage_bank %}
+        {% for row in bank_rows %}
+            <section class="bento-card span-6">
+                <div class="section-header">
+                    <div>
+                        <h3 class="bento-title">
+                            {{ row.bank.name }}
+                        </h3>
+
+                        <div class="bento-subtitle">
+                            Bank configuration and retention
+                        </div>
+                    </div>
+
+                    <span class="bank-code">
+                        {{ row.bank.code }}
+                    </span>
+                </div>
+
+                <form method="post">
+                    {% csrf_token %}
+
+                    <input
+                        type="hidden"
+                        name="action"
+                        value="bank_settings"
+                    >
+
+                    <input
+                        type="hidden"
+                        name="bank_id"
+                        value="{{ row.bank.id }}"
+                    >
+
+                    {% if row.form.errors %}
+                        <div class="form-errors">
+                            {{ row.form.errors }}
+                        </div>
+                    {% endif %}
+
+                    <div class="settings-form-grid">
+                        <div class="full-width">
+                            <label class="form-label">
+                                Time zone
+                            </label>
+
+                            <div
+                                class="dropdown ui-select"
+                                data-ui-select
+                            >
+                                <input
+                                    type="hidden"
+                                    name="bank-{{ row.bank.id }}-timezone"
+                                    value="{{ row.form.timezone.value }}"
+                                >
+
+                                <button
+                                    class="ui-select-toggle dropdown-toggle"
+                                    type="button"
+                                    data-bs-toggle="dropdown"
+                                >
+                                    <span data-ui-select-label>
+                                        {{ row.form.timezone.value }}
+                                    </span>
+
+                                    <i class="bi bi-chevron-down ui-select-chevron"></i>
+                                </button>
+
+                                <div class="dropdown-menu ui-select-menu">
+                                    {% for value, label in row.form.fields.timezone.choices %}
+                                        <button
+                                            type="button"
+                                            class="ui-select-option {% if row.form.timezone.value == value %}active{% endif %}"
+                                            data-ui-select-option
+                                            data-value="{{ value }}"
+                                            data-label="{{ label }}"
+                                        >
+                                            {{ label }}
+                                        </button>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="form-label">
+                                Image retention days
+                            </label>
+
+                            {{ row.form.image_retention_days }}
+                        </div>
+
+                        <div>
+                            <label class="form-label">
+                                Record retention days
+                            </label>
+
+                            {{ row.form.record_retention_days }}
+                        </div>
+
+                        <div class="full-width">
+                            <label class="form-label">
+                                Offline after minutes
+                            </label>
+
+                            {{ row.form.offline_after_minutes }}
+                        </div>
+                    </div>
+
+                    <div class="settings-switch-row mt-3">
+                        <div>
+                            <div class="settings-switch-title">
+                                Delete expired images
+                            </div>
+
+                            <div class="settings-switch-text">
+                                Delete captured image files after
+                                the image-retention period.
+                            </div>
+                        </div>
+
+                        {{ row.form.delete_images_after_retention }}
+                    </div>
+
+                    <button
+                        type="submit"
+                        class="btn btn-primary mt-4"
+                    >
+                        Save bank settings
+                    </button>
+                </form>
+            </section>
+
+            <section class="bento-card span-6">
+                <div class="section-header">
+                    <div>
+                        <h3 class="bento-title">
+                            Upload API key
+                        </h3>
+
+                        <div class="bento-subtitle">
+                            Used by capture computers
+                        </div>
+                    </div>
+
+                    <div class="icon-box text-cyan">
+                        <i class="bi bi-key"></i>
+                    </div>
+                </div>
+
+                <div class="access-row">
+                    <div class="access-row-icon">
+                        {% if row.bank.has_api_key %}
+                            <i class="bi bi-check-lg"></i>
+                        {% else %}
+                            <i class="bi bi-x-lg text-red"></i>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <div class="fw-semibold">
+                            API key status
+                        </div>
+
+                        <div class="text-faint small mt-1">
+                            {% if row.bank.has_api_key %}
+                                Configured
+                            {% else %}
+                                Not configured
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="access-row">
+                    <div class="access-row-icon">
+                        <i class="bi bi-clock-history"></i>
+                    </div>
+
+                    <div>
+                        <div class="fw-semibold">
+                            Last rotated
+                        </div>
+
+                        <div class="text-faint small mt-1">
+                            {{ row.bank.api_key_rotated_at|date:"M d, Y H:i"|default:"Never" }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert mt-4 mb-0">
+                    Rotating the key immediately disables
+                    the old key. Every capture computer
+                    must then receive the new value.
+                </div>
+
+                <form
+                    method="post"
+                    class="mt-4"
+                    onsubmit="return confirm('Rotate this bank API key? Existing capture computers will stop uploading until they receive the new key.');"
+                >
+                    {% csrf_token %}
+
+                    <input
+                        type="hidden"
+                        name="action"
+                        value="rotate_api_key"
+                    >
+
+                    <input
+                        type="hidden"
+                        name="bank_id"
+                        value="{{ row.bank.id }}"
+                    >
+
+                    <button
+                        type="submit"
+                        class="btn btn-outline-primary"
+                    >
+                        <i class="bi bi-arrow-repeat me-2"></i>
+                        Rotate API key
+                    </button>
+                </form>
+            </section>
+        {% endfor %}
+
+        <section class="bento-card span-12">
+            <div class="section-header">
+                <div>
+                    <h3 class="bento-title">
+                        Branch configuration
+                    </h3>
+
+                    <div class="bento-subtitle">
+                        Manage branch codes, locations and
+                        computer-name prefixes
+                    </div>
+                </div>
+
+                <div class="icon-box">
+                    <i class="bi bi-buildings"></i>
+                </div>
+            </div>
+
+            {% for row in branch_rows %}
+                <details class="branch-settings-item">
+                    <summary>
+                        <div>
+                            <div class="fw-semibold">
+                                {% if request.user.is_superuser %}
+                                    {{ row.branch.bank.code }} —
+                                {% endif %}
+
+                                {{ row.branch.name }}
+                            </div>
+
+                            <div class="text-faint small mt-1">
+                                Code:
+                                {{ row.branch.code }}
+                                ·
+                                Prefix:
+                                {{ row.branch.pc_prefix }}
+                            </div>
+                        </div>
+
+                        <span class="status-chip {% if row.branch.is_active %}text-green{% else %}text-red{% endif %}">
+                            {% if row.branch.is_active %}
+                                Active
+                            {% else %}
+                                Inactive
+                            {% endif %}
+                        </span>
+                    </summary>
+
+                    <div class="branch-settings-body">
+                        <form method="post">
+                            {% csrf_token %}
+
+                            <input
+                                type="hidden"
+                                name="action"
+                                value="branch_settings"
+                            >
+
+                            <input
+                                type="hidden"
+                                name="branch_id"
+                                value="{{ row.branch.id }}"
+                            >
+
+                            {% if row.form.errors %}
+                                <div class="form-errors">
+                                    {{ row.form.errors }}
+                                </div>
+                            {% endif %}
+
+                            <div class="settings-form-grid">
+                                <div>
+                                    <label class="form-label">
+                                        Branch name
+                                    </label>
+
+                                    {{ row.form.name }}
+                                </div>
+
+                                <div>
+                                    <label class="form-label">
+                                        Branch code
+                                    </label>
+
+                                    {{ row.form.code }}
+                                </div>
+
+                                <div>
+                                    <label class="form-label">
+                                        PC prefix
+                                    </label>
+
+                                    {{ row.form.pc_prefix }}
+                                </div>
+
+                                <div>
+                                    <label class="form-label">
+                                        Location
+                                    </label>
+
+                                    {{ row.form.location }}
+                                </div>
+                            </div>
+
+                            <div class="settings-switch-row">
+                                <div>
+                                    <div class="settings-switch-title">
+                                        Active branch
+                                    </div>
+
+                                    <div class="settings-switch-text">
+                                        Inactive branches cannot receive
+                                        new capture uploads.
+                                    </div>
+                                </div>
+
+                                {{ row.form.is_active }}
+                            </div>
+
+                            <button
+                                type="submit"
+                                class="btn btn-primary mt-4"
+                            >
+                                Save branch
+                            </button>
+                        </form>
+                    </div>
+                </details>
+            {% empty %}
+                <div class="empty-state">
+                    <i class="bi bi-building-x"></i>
+
+                    <h5>
+                        No branches found
+                    </h5>
+                </div>
+            {% endfor %}
+        </section>
+    {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener(
+        "DOMContentLoaded",
+        function () {
+            const copyButton =
+                document.getElementById(
+                    "copyApiKey"
+                );
+
+            const apiKey =
+                document.getElementById(
+                    "newApiKey"
+                );
+
+            if (
+                copyButton
+                && apiKey
+            ) {
+                copyButton.addEventListener(
+                    "click",
+                    async function () {
+                        try {
+                            await navigator
+                                .clipboard
+                                .writeText(
+                                    apiKey.textContent.trim()
+                                );
+
+                            copyButton.innerHTML =
+                                '<i class="bi bi-check-lg"></i>';
+                        } catch (error) {
+                            window.prompt(
+                                "Copy the API key:",
+                                apiKey.textContent.trim()
+                            );
+                        }
+                    }
+                );
+            }
+        }
+    );
+</script>
 {% endblock %}
