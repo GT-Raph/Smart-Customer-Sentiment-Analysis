@@ -2,16 +2,23 @@ import csv
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from .models import UserPreference
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count
-from django.http import FileResponse, Http404, HttpResponse
+from django.db.models import Count, Q
+from django.db.models.functions import TruncDate
+from django.http import (
+    FileResponse,
+    Http404,
+    StreamingHttpResponse,
+)
 from django.shortcuts import redirect, render
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 
+from .models import UserPreference
 from .tenant import (
     get_visible_branch_or_404,
     require_bank_admin,
@@ -38,6 +45,11 @@ EMOTION_COLORS = {
 }
 
 
+class CSVBuffer:
+    def write(self, value):
+        return value
+
+
 def login_view(request):
     if request.user.is_authenticated:
         return redirect("dashboard")
@@ -62,10 +74,25 @@ def login_view(request):
         if user is not None:
             login(request, user)
 
-            return redirect(
-                request.GET.get("next")
-                or "dashboard"
+            next_url = request.GET.get(
+                "next"
             )
+
+            if (
+                next_url
+                and url_has_allowed_host_and_scheme(
+                    url=next_url,
+                    allowed_hosts={
+                        request.get_host()
+                    },
+                    require_https=(
+                        request.is_secure()
+                    ),
+                )
+            ):
+                return redirect(next_url)
+
+            return redirect("dashboard")
 
         messages.error(
             request,
@@ -80,6 +107,7 @@ def login_view(request):
 
 def logout_view(request):
     logout(request)
+
     return redirect("login")
 
 
@@ -100,6 +128,7 @@ def _date_window(value):
             second=0,
             microsecond=0,
         )
+
     else:
         start = end - timedelta(
             days=days - 1
@@ -155,11 +184,25 @@ def _scoped_query(request):
         )
 
     if branch_id:
+        try:
+            branch_id = int(
+                branch_id
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+            branch_id = None
+
+    if branch_id:
         selected_branch = (
             visible_branches(
                 request.user
             )
-            .filter(pk=branch_id)
+            .filter(
+                pk=branch_id
+            )
             .first()
         )
 
@@ -184,21 +227,35 @@ def _emotion_counts(queryset):
 
     grouped = (
         queryset
-        .exclude(emotion="")
-        .values("emotion")
-        .annotate(total=Count("id"))
+        .exclude(
+            emotion=""
+        )
+        .values(
+            "emotion"
+        )
+        .annotate(
+            total=Count("id")
+        )
     )
 
     for item in grouped:
-        emotion = item["emotion"]
+        emotion = item[
+            "emotion"
+        ]
 
         if emotion in counts:
-            counts[emotion] = item["total"]
+            counts[emotion] = item[
+                "total"
+            ]
 
     return counts
 
 
-def _trend_data(queryset, start, end):
+def _trend_data(
+    queryset,
+    start,
+    end,
+):
     labels = []
 
     values = {
@@ -210,37 +267,63 @@ def _trend_data(queryset, start, end):
 
     while current <= end.date():
         labels.append(
-            current.strftime("%Y-%m-%d")
+            current.strftime(
+                "%Y-%m-%d"
+            )
         )
 
-        daily_queryset = queryset.filter(
-            timestamp__date=current
+        daily_queryset = (
+            queryset.filter(
+                timestamp__date=current
+            )
         )
 
         grouped = {
             row["emotion"]: row["total"]
             for row in (
                 daily_queryset
-                .values("emotion")
-                .annotate(total=Count("id"))
+                .values(
+                    "emotion"
+                )
+                .annotate(
+                    total=Count("id")
+                )
             )
         }
 
         for emotion in EMOTIONS:
             values[emotion].append(
-                grouped.get(emotion, 0)
+                grouped.get(
+                    emotion,
+                    0,
+                )
             )
 
-        current += timedelta(days=1)
+        current += timedelta(
+            days=1
+        )
 
     datasets = [
         {
             "label": emotion.title(),
-            "data": values[emotion],
+
+            "data": values[
+                emotion
+            ],
+
             "backgroundColor": (
-                EMOTION_COLORS[emotion] + "80"
+                EMOTION_COLORS[
+                    emotion
+                ]
+                + "80"
             ),
-            "borderColor": EMOTION_COLORS[emotion],
+
+            "borderColor": (
+                EMOTION_COLORS[
+                    emotion
+                ]
+            ),
+
             "borderWidth": 2,
         }
         for emotion in EMOTIONS
@@ -249,7 +332,10 @@ def _trend_data(queryset, start, end):
     return labels, datasets
 
 
-def _hourly_data(queryset, target_date):
+def _hourly_data(
+    queryset,
+    target_date,
+):
     labels = [
         f"{hour:02d}:00"
         for hour in range(24)
@@ -262,69 +348,119 @@ def _hourly_data(queryset, target_date):
 
     grouped = (
         queryset
-        .filter(timestamp__date=target_date)
+        .filter(
+            timestamp__date=(
+                target_date
+            )
+        )
         .values(
             "timestamp__hour",
             "emotion",
         )
-        .annotate(total=Count("id"))
+        .annotate(
+            total=Count("id")
+        )
     )
 
     for row in grouped:
-        hour = row["timestamp__hour"]
-        emotion = row["emotion"]
+        hour = row[
+            "timestamp__hour"
+        ]
+
+        emotion = row[
+            "emotion"
+        ]
 
         if (
             emotion in result
             and hour is not None
         ):
-            result[emotion][hour] = row["total"]
+            result[
+                emotion
+            ][hour] = row[
+                "total"
+            ]
 
-    result["labels"] = labels
+    result[
+        "labels"
+    ] = labels
 
     return result
 
 
-def _growth(queryset, negative=False):
+def _growth(
+    queryset,
+    negative=False,
+):
     today = timezone.localdate()
-    yesterday = today - timedelta(days=1)
+
+    yesterday = (
+        today
+        - timedelta(
+            days=1
+        )
+    )
 
     if negative:
         queryset = queryset.filter(
-            emotion__in=("sad", "angry")
+            emotion__in=(
+                "sad",
+                "angry",
+            )
         )
 
-        today_count = queryset.filter(
-            timestamp__date=today
-        ).count()
+        today_count = (
+            queryset.filter(
+                timestamp__date=today
+            ).count()
+        )
 
-        yesterday_count = queryset.filter(
-            timestamp__date=yesterday
-        ).count()
+        yesterday_count = (
+            queryset.filter(
+                timestamp__date=yesterday
+            ).count()
+        )
 
     else:
         today_count = (
             queryset
-            .filter(timestamp__date=today)
-            .values("visitor_id")
+            .filter(
+                timestamp__date=today
+            )
+            .values(
+                "visitor_id"
+            )
             .distinct()
             .count()
         )
 
         yesterday_count = (
             queryset
-            .filter(timestamp__date=yesterday)
-            .values("visitor_id")
+            .filter(
+                timestamp__date=(
+                    yesterday
+                )
+            )
+            .values(
+                "visitor_id"
+            )
             .distinct()
             .count()
         )
 
     if yesterday_count == 0:
-        return 100 if today_count else 0
+        return (
+            100
+            if today_count
+            else 0
+        )
 
     return round(
         (
-            (today_count - yesterday_count)
+            (
+                today_count
+                - yesterday_count
+            )
             / yesterday_count
         )
         * 100,
@@ -341,58 +477,95 @@ def dashboard(request):
         )
     )
 
-    scoped_all, selected_branch = (
-        _scoped_query(request)
+    (
+        scoped_all,
+        selected_branch,
+    ) = _scoped_query(
+        request
     )
 
     time_range = (
-        request.GET.get("range")
+        request.GET.get(
+            "range"
+        )
         or preferences.default_date_range
     )
 
-    start, end, trend_days = _date_window(
+    (
+        start,
+        end,
+        trend_days,
+    ) = _date_window(
         time_range
     )
 
-    period_queryset = scoped_all.filter(
-        timestamp__range=(start, end),
-        status="done",
+    completed_queryset = (
+        scoped_all.filter(
+            status="done"
+        )
     )
 
-    trend_labels, trend_datasets = _trend_data(
+    period_queryset = (
+        completed_queryset.filter(
+            timestamp__range=(
+                start,
+                end,
+            )
+        )
+    )
+
+    (
+        trend_labels,
+        trend_datasets,
+    ) = _trend_data(
         period_queryset,
         start,
         end,
     )
 
     hourly_range = (
-        request.GET.get("hourly")
+        request.GET.get(
+            "hourly"
+        )
         or preferences.default_hourly_range
     )
-    target_date = timezone.localdate()
+
+    target_date = (
+        timezone.localdate()
+    )
 
     if hourly_range == "yesterday":
-        target_date -= timedelta(days=1)
+        target_date -= timedelta(
+            days=1
+        )
 
     hourly = _hourly_data(
-        scoped_all.filter(status="done"),
+        completed_queryset,
         target_date,
     )
 
-    today_queryset = scoped_all.filter(
-        timestamp__date=timezone.localdate(),
-        status="done",
+    today_queryset = (
+        completed_queryset.filter(
+            timestamp__date=(
+                timezone.localdate()
+            )
+        )
     )
 
-    today_counts = _emotion_counts(
-        today_queryset
+    today_counts = (
+        _emotion_counts(
+            today_queryset
+        )
     )
 
     total_detections = sum(
         today_counts.values()
     )
 
-    top_name, top_value = max(
+    (
+        top_name,
+        top_value,
+    ) = max(
         today_counts.items(),
         key=lambda item: item[1],
     )
@@ -404,44 +577,71 @@ def dashboard(request):
 
     hourly_totals = [
         sum(
-            hourly[emotion][index]
+            hourly[
+                emotion
+            ][index]
             for emotion in EMOTIONS
         )
         for index in range(24)
     ]
 
-    if max(hourly_totals, default=0):
-        peak_hour = hourly_totals.index(
-            max(hourly_totals)
+    if max(
+        hourly_totals,
+        default=0,
+    ):
+        peak_hour = (
+            hourly_totals.index(
+                max(
+                    hourly_totals
+                )
+            )
         )
+
     else:
         peak_hour = None
 
     if selected_branch:
-        branch_name = selected_branch.name
+        branch_name = (
+            selected_branch.name
+        )
 
     elif request.user.is_superuser:
-        branch_name = "All Banks"
+        branch_name = (
+            "All Banks"
+        )
 
     elif request.user.bank_id:
-        branch_name = request.user.bank.name
+        branch_name = (
+            request.user.bank.name
+        )
 
     else:
-        branch_name = "No Bank Assigned"
+        branch_name = (
+            "No Bank Assigned"
+        )
 
     context = {
-        "branch_name": branch_name,
-        "dashboard_preferences": preferences,
+        "branch_name": (
+            branch_name
+        ),
+
+        "dashboard_preferences": (
+            preferences
+        ),
 
         "total_visitors": (
             today_queryset
-            .values("visitor_id")
+            .values(
+                "visitor_id"
+            )
             .distinct()
             .count()
         ),
 
-        "visitor_growth": _growth(
-            scoped_all
+        "visitor_growth": (
+            _growth(
+                completed_queryset
+            )
         ),
 
         "top_emotion": {
@@ -450,10 +650,13 @@ def dashboard(request):
                 if top_value
                 else "none"
             ),
+
             "percentage": (
                 round(
-                    top_value
-                    / total_detections
+                    (
+                        top_value
+                        / total_detections
+                    )
                     * 100,
                     1,
                 )
@@ -464,8 +667,10 @@ def dashboard(request):
 
         "negative_percentage": (
             round(
-                negative_count
-                / total_detections
+                (
+                    negative_count
+                    / total_detections
+                )
                 * 100,
                 1,
             )
@@ -473,9 +678,11 @@ def dashboard(request):
             else 0
         ),
 
-        "negative_growth": _growth(
-            scoped_all,
-            negative=True,
+        "negative_growth": (
+            _growth(
+                completed_queryset,
+                negative=True,
+            )
         ),
 
         "activity_level": (
@@ -496,65 +703,120 @@ def dashboard(request):
             else "No data"
         ),
 
-        "total_detections": total_detections,
-
-        "emotion_labels": json.dumps(
-            list(today_counts.keys())
+        "total_detections": (
+            total_detections
         ),
 
-        "emotion_data": json.dumps(
-            list(today_counts.values())
+        "emotion_labels": (
+            json.dumps(
+                list(
+                    today_counts.keys()
+                )
+            )
         ),
 
-        "emotion_colors": json.dumps(
-            [
-                EMOTION_COLORS[emotion]
-                for emotion in today_counts
-            ]
+        "emotion_data": (
+            json.dumps(
+                list(
+                    today_counts.values()
+                )
+            )
         ),
 
-        "trend_labels": json.dumps(
-            trend_labels
+        "emotion_colors": (
+            json.dumps(
+                [
+                    EMOTION_COLORS[
+                        emotion
+                    ]
+                    for emotion
+                    in today_counts
+                ]
+            )
         ),
 
-        "trend_datasets": json.dumps(
-            trend_datasets
+        "trend_labels": (
+            json.dumps(
+                trend_labels
+            )
         ),
 
-        "trend_days": trend_days,
-        "time_range": time_range,
-        "hourly_range": hourly_range,
-
-        "hourly_labels": json.dumps(
-            hourly["labels"]
+        "trend_datasets": (
+            json.dumps(
+                trend_datasets
+            )
         ),
 
-        "hourly_happy": json.dumps(
-            hourly["happy"]
+        "trend_days": (
+            trend_days
         ),
 
-        "hourly_neutral": json.dumps(
-            hourly["neutral"]
+        "time_range": (
+            time_range
         ),
 
-        "hourly_sad": json.dumps(
-            hourly["sad"]
+        "hourly_range": (
+            hourly_range
         ),
 
-        "hourly_angry": json.dumps(
-            hourly["angry"]
+        "hourly_labels": (
+            json.dumps(
+                hourly[
+                    "labels"
+                ]
+            )
         ),
 
-        "hourly_surprise": json.dumps(
-            hourly["surprise"]
+        "hourly_happy": (
+            json.dumps(
+                hourly[
+                    "happy"
+                ]
+            )
         ),
 
-        "branches": visible_branches(
-            request.user
+        "hourly_neutral": (
+            json.dumps(
+                hourly[
+                    "neutral"
+                ]
+            )
+        ),
+
+        "hourly_sad": (
+            json.dumps(
+                hourly[
+                    "sad"
+                ]
+            )
+        ),
+
+        "hourly_angry": (
+            json.dumps(
+                hourly[
+                    "angry"
+                ]
+            )
+        ),
+
+        "hourly_surprise": (
+            json.dumps(
+                hourly[
+                    "surprise"
+                ]
+            )
+        ),
+
+        "branches": (
+            visible_branches(
+                request.user
+            )
         ),
 
         "selected_branch": (
-            str(selected_branch.id)
+            str(
+                selected_branch.id
+            )
             if selected_branch
             else ""
         ),
@@ -573,73 +835,176 @@ def dashboard(request):
 
 @login_required
 def branch_overview(request):
-    require_bank_admin(request.user)
-
-    time_range = request.GET.get(
-        "range",
-        "week",
+    require_bank_admin(
+        request.user
     )
 
-    start, end, days = _date_window(
+    time_range = (
+        request.GET.get(
+            "range",
+            "week",
+        )
+    )
+
+    (
+        start,
+        end,
+        days,
+    ) = _date_window(
         time_range
     )
 
     labels = [
         (
-            start + timedelta(days=index)
-        ).strftime("%b %d")
-        for index in range(days)
+            start
+            + timedelta(
+                days=index
+            )
+        ).strftime(
+            "%b %d"
+        )
+        for index in range(
+            days
+        )
     ]
+
+    branches = list(
+        visible_branches(
+            request.user
+        )
+    )
+
+    branch_ids = [
+        branch.id
+        for branch in branches
+    ]
+
+    period_snapshots = (
+        visible_snapshots(
+            request.user
+        )
+        .filter(
+            branch_id__in=(
+                branch_ids
+            ),
+
+            timestamp__range=(
+                start,
+                end,
+            ),
+
+            status="done",
+        )
+    )
+
+    trend_rows = (
+        period_snapshots
+        .annotate(
+            trend_date=TruncDate(
+                "timestamp"
+            )
+        )
+        .values(
+            "branch_id",
+            "trend_date",
+        )
+        .annotate(
+            positive=Count(
+                "id",
+                filter=Q(
+                    emotion="happy"
+                ),
+            ),
+
+            negative=Count(
+                "id",
+                filter=Q(
+                    emotion__in=(
+                        "sad",
+                        "angry",
+                    )
+                ),
+            ),
+        )
+    )
+
+    trend_by_branch = {}
+
+    for row in trend_rows:
+        trend_by_branch.setdefault(
+            row[
+                "branch_id"
+            ],
+            {},
+        )[
+            row[
+                "trend_date"
+            ]
+        ] = (
+            row[
+                "positive"
+            ]
+            - row[
+                "negative"
+            ]
+        )
 
     branch_summaries = []
     chart_datasets = []
 
-    for branch in visible_branches(
-        request.user
-    ):
-        queryset = visible_snapshots(
-            request.user
-        ).filter(
-            branch_id=branch.id,
-            timestamp__range=(start, end),
-            status="done",
+    for branch in branches:
+        queryset = (
+            period_snapshots.filter(
+                branch_id=branch.id
+            )
         )
 
-        counts = _emotion_counts(queryset)
-        total = sum(counts.values())
+        counts = (
+            _emotion_counts(
+                queryset
+            )
+        )
+
+        total = sum(
+            counts.values()
+        )
 
         top_emotion = (
             max(
                 counts.items(),
-                key=lambda item: item[1],
+                key=lambda item: (
+                    item[1]
+                ),
             )[0]
             if total
             else "none"
         )
 
-        trend = []
-
-        for index in range(days):
-            date_value = (
-                start
-                + timedelta(days=index)
-            ).date()
-
-            daily_queryset = queryset.filter(
-                timestamp__date=date_value
+        branch_trend = (
+            trend_by_branch.get(
+                branch.id,
+                {},
             )
+        )
 
-            positive = daily_queryset.filter(
-                emotion="happy"
-            ).count()
+        trend = [
+            branch_trend.get(
+                (
+                    start
+                    + timedelta(
+                        days=index
+                    )
+                ).date(),
+                0,
+            )
+            for index in range(
+                days
+            )
+        ]
 
-            negative = daily_queryset.filter(
-                emotion__in=("sad", "angry")
-            ).count()
-
-            trend.append(positive - negative)
-
-        display_name = branch.name
+        display_name = (
+            branch.name
+        )
 
         if request.user.is_superuser:
             display_name = (
@@ -650,21 +1015,32 @@ def branch_overview(request):
         branch_summaries.append(
             {
                 "id": branch.id,
-                "name": display_name,
+
+                "name": (
+                    display_name
+                ),
 
                 "visitor_count": (
                     queryset
-                    .values("visitor_id")
+                    .values(
+                        "visitor_id"
+                    )
                     .distinct()
                     .count()
                 ),
 
-                "top_emotion": top_emotion,
+                "top_emotion": (
+                    top_emotion
+                ),
 
                 "positivity_percent": (
                     round(
-                        counts["happy"]
-                        / total
+                        (
+                            counts[
+                                "happy"
+                            ]
+                            / total
+                        )
                         * 100,
                         1,
                     )
@@ -672,14 +1048,22 @@ def branch_overview(request):
                     else 0
                 ),
 
-                "trend_counts": trend,
+                "trend_counts": (
+                    trend
+                ),
             }
         )
 
         chart_datasets.append(
             {
-                "label": display_name,
-                "data": trend,
+                "label": (
+                    display_name
+                ),
+
+                "data": (
+                    trend
+                ),
+
                 "borderWidth": 2,
                 "tension": 0.3,
                 "fill": False,
@@ -688,33 +1072,59 @@ def branch_overview(request):
 
     return render(
         request,
-        "monitor/branch_overview.html",
+        (
+            "monitor/"
+            "branch_overview.html"
+        ),
         {
-            "branches": branch_summaries,
-            "time_range": time_range,
-            "chart_labels": json.dumps(labels),
-            "chart_datasets": json.dumps(
-                chart_datasets
+            "branches": (
+                branch_summaries
             ),
+
+            "time_range": (
+                time_range
+            ),
+
+            "branch_chart_data": {
+                "labels": (
+                    labels
+                ),
+
+                "datasets": (
+                    chart_datasets
+                ),
+            },
         },
     )
 
 
 @login_required
-def branch_detail(request, branch_id):
-    branch = get_visible_branch_or_404(
-        request.user,
-        branch_id,
+def branch_detail(
+    request,
+    branch_id,
+):
+    branch = (
+        get_visible_branch_or_404(
+            request.user,
+            branch_id,
+        )
     )
 
-    queryset = visible_snapshots(
-        request.user
-    ).filter(
-        branch_id=branch.id,
-        status="done",
+    queryset = (
+        visible_snapshots(
+            request.user
+        )
+        .filter(
+            branch_id=branch.id,
+            status="done",
+        )
     )
 
-    counts = _emotion_counts(queryset)
+    counts = (
+        _emotion_counts(
+            queryset
+        )
+    )
 
     hourly = _hourly_data(
         queryset,
@@ -723,7 +1133,9 @@ def branch_detail(request, branch_id):
 
     hourly_visits = [
         sum(
-            hourly[emotion][index]
+            hourly[
+                emotion
+            ][index]
             for emotion in EMOTIONS
         )
         for index in range(24)
@@ -732,12 +1144,20 @@ def branch_detail(request, branch_id):
     hourly_positivity = [
         (
             round(
-                hourly["happy"][index]
-                / hourly_visits[index]
+                (
+                    hourly[
+                        "happy"
+                    ][index]
+                    / hourly_visits[
+                        index
+                    ]
+                )
                 * 100,
                 1,
             )
-            if hourly_visits[index]
+            if hourly_visits[
+                index
+            ]
             else 0
         )
         for index in range(24)
@@ -745,52 +1165,91 @@ def branch_detail(request, branch_id):
 
     emotion_distribution = [
         {
-            "emotion": emotion,
-            "count": count,
+            "emotion": (
+                emotion
+            ),
+
+            "count": (
+                count
+            ),
         }
-        for emotion, count in counts.items()
+        for (
+            emotion,
+            count,
+        ) in counts.items()
     ]
 
     return render(
         request,
-        "monitor/branch_detail.html",
+        (
+            "monitor/"
+            "branch_detail.html"
+        ),
         {
-            "branch": branch,
-            "visits": queryset[:20],
-            "total_emotions": queryset.count(),
+            "branch": (
+                branch
+            ),
+
+            "visits": (
+                queryset[:20]
+            ),
+
+            "total_emotions": (
+                queryset.count()
+            ),
 
             "emotion_dist": (
                 emotion_distribution
             ),
 
-            "emotion_labels": json.dumps(
-                [
-                    emotion.title()
-                    for emotion in counts
-                ]
+            "emotion_labels": (
+                json.dumps(
+                    [
+                        emotion.title()
+                        for emotion
+                        in counts
+                    ]
+                )
             ),
 
-            "emotion_counts": json.dumps(
-                list(counts.values())
+            "emotion_counts": (
+                json.dumps(
+                    list(
+                        counts.values()
+                    )
+                )
             ),
 
-            "emotion_colors": json.dumps(
-                [
-                    EMOTION_COLORS[emotion]
-                    for emotion in counts
-                ]
+            "emotion_colors": (
+                json.dumps(
+                    [
+                        EMOTION_COLORS[
+                            emotion
+                        ]
+                        for emotion
+                        in counts
+                    ]
+                )
             ),
 
-            "hourly_labels": json.dumps(
-                hourly["labels"]
+            "hourly_labels": (
+                json.dumps(
+                    hourly[
+                        "labels"
+                    ]
+                )
             ),
 
-            "hourly_visits": json.dumps(
-                hourly_visits
+            "hourly_visits": (
+                json.dumps(
+                    hourly_visits
+                )
             ),
 
-            "hourly_positivity": json.dumps(
-                hourly_positivity
+            "hourly_positivity": (
+                json.dumps(
+                    hourly_positivity
+                )
             ),
         },
     )
@@ -798,42 +1257,64 @@ def branch_detail(request, branch_id):
 
 @login_required
 def emotion_analytics(request):
-    scoped_queryset, _ = _scoped_query(
+    (
+        scoped_queryset,
+        _,
+    ) = _scoped_query(
         request
     )
 
-    time_range = request.GET.get(
-        "range",
-        "week",
+    time_range = (
+        request.GET.get(
+            "range",
+            "week",
+        )
     )
 
-    start, end, _ = _date_window(
+    (
+        start,
+        end,
+        _,
+    ) = _date_window(
         time_range
     )
 
-    period_queryset = scoped_queryset.filter(
-        timestamp__range=(start, end),
-        status="done",
+    period_queryset = (
+        scoped_queryset.filter(
+            timestamp__range=(
+                start,
+                end,
+            ),
+
+            status="done",
+        )
     )
 
     counts = _emotion_counts(
         period_queryset
     )
 
-    labels, datasets = _trend_data(
+    (
+        labels,
+        datasets,
+    ) = _trend_data(
         period_queryset,
         start,
         end,
     )
 
     hourly = _hourly_data(
-        scoped_queryset.filter(status="done"),
+        scoped_queryset.filter(
+            status="done"
+        ),
         timezone.localdate(),
     )
 
     hourly_total = [
         sum(
-            hourly[emotion][index]
+            hourly[
+                emotion
+            ][index]
             for emotion in EMOTIONS
         )
         for index in range(24)
@@ -850,8 +1331,10 @@ def emotion_analytics(request):
             )
         )
 
-        branch_counts = _emotion_counts(
-            branch_queryset
+        branch_counts = (
+            _emotion_counts(
+                branch_queryset
+            )
         )
 
         total = sum(
@@ -860,12 +1343,18 @@ def emotion_analytics(request):
 
         branch_comparison.append(
             {
-                "name": branch.name,
+                "name": (
+                    branch.name
+                ),
 
                 "happy": (
                     round(
-                        branch_counts["happy"]
-                        / total
+                        (
+                            branch_counts[
+                                "happy"
+                            ]
+                            / total
+                        )
                         * 100,
                         1,
                     )
@@ -875,8 +1364,12 @@ def emotion_analytics(request):
 
                 "neutral": (
                     round(
-                        branch_counts["neutral"]
-                        / total
+                        (
+                            branch_counts[
+                                "neutral"
+                            ]
+                            / total
+                        )
                         * 100,
                         1,
                     )
@@ -887,10 +1380,16 @@ def emotion_analytics(request):
                 "negative": (
                     round(
                         (
-                            branch_counts["sad"]
-                            + branch_counts["angry"]
+                            (
+                                branch_counts[
+                                    "sad"
+                                ]
+                                + branch_counts[
+                                    "angry"
+                                ]
+                            )
+                            / total
                         )
-                        / total
                         * 100,
                         1,
                     )
@@ -900,7 +1399,9 @@ def emotion_analytics(request):
 
                 "total_visits": (
                     branch_queryset
-                    .values("visitor_id")
+                    .values(
+                        "visitor_id"
+                    )
                     .distinct()
                     .count()
                 ),
@@ -909,39 +1410,70 @@ def emotion_analytics(request):
 
     return render(
         request,
-        "monitor/emotion_analytics.html",
+        (
+            "monitor/"
+            "emotion_analytics.html"
+        ),
         {
-            "page_title": "Emotion Analytics",
+            "page_title": (
+                "Emotion Analytics"
+            ),
 
             "chart_data": {
-                "labels": labels,
-                "datasets": datasets,
+                "labels": (
+                    labels
+                ),
+
+                "datasets": (
+                    datasets
+                ),
             },
 
-            "hourly_labels": json.dumps(
-                hourly["labels"]
+            "hourly_labels": (
+                json.dumps(
+                    hourly[
+                        "labels"
+                    ]
+                )
             ),
 
-            "hourly_data": json.dumps(
-                hourly_total
+            "hourly_data": (
+                json.dumps(
+                    hourly_total
+                )
             ),
 
-            "dist_labels": json.dumps(
-                list(counts.keys())
+            "dist_labels": (
+                json.dumps(
+                    list(
+                        counts.keys()
+                    )
+                )
             ),
 
-            "dist_data": json.dumps(
-                list(counts.values())
+            "dist_data": (
+                json.dumps(
+                    list(
+                        counts.values()
+                    )
+                )
             ),
 
-            "dist_colors": json.dumps(
-                [
-                    EMOTION_COLORS[emotion]
-                    for emotion in counts
-                ]
+            "dist_colors": (
+                json.dumps(
+                    [
+                        EMOTION_COLORS[
+                            emotion
+                        ]
+                        for emotion
+                        in counts
+                    ]
+                )
             ),
 
-            "time_range": time_range,
+            "time_range": (
+                time_range
+            ),
 
             "branch_comparison": (
                 branch_comparison
@@ -957,70 +1489,117 @@ def reports(request):
     )
 
     if request.method == "POST":
-        queryset, _ = _scoped_query(request)
-
-        try:
-            date_from = datetime.strptime(
-                request.POST["date_from"],
-                "%Y-%m-%d",
-            ).date()
-
-            date_to = datetime.strptime(
-                request.POST["date_to"],
-                "%Y-%m-%d",
-            ).date()
-
-        except (KeyError, ValueError):
-            messages.error(
-                request,
-                "Choose a valid date range.",
-            )
-
-            return redirect("reports")
-
-        queryset = queryset.filter(
-            timestamp__date__range=(
-                date_from,
-                date_to,
-            )
-        ).order_by("timestamp")
-
-        response = HttpResponse(
-            content_type="text/csv"
+        (
+            queryset,
+            _,
+        ) = _scoped_query(
+            request
         )
 
-        response["Content-Disposition"] = (
+        try:
+            date_from = (
+                datetime.strptime(
+                    request.POST[
+                        "date_from"
+                    ],
+                    "%Y-%m-%d",
+                ).date()
+            )
+
+            date_to = (
+                datetime.strptime(
+                    request.POST[
+                        "date_to"
+                    ],
+                    "%Y-%m-%d",
+                ).date()
+            )
+
+        except (
+            KeyError,
+            ValueError,
+        ):
+            messages.error(
+                request,
+                (
+                    "Choose a valid "
+                    "date range."
+                ),
+            )
+
+            return redirect(
+                "reports"
+            )
+
+        queryset = (
+            queryset
+            .filter(
+                timestamp__date__range=(
+                    date_from,
+                    date_to,
+                )
+            )
+            .order_by(
+                "timestamp"
+            )
+        )
+
+        writer = csv.writer(
+            CSVBuffer()
+        )
+
+        def csv_rows():
+            yield writer.writerow(
+                [
+                    "Bank",
+                    "Branch",
+                    "Visitor ID",
+                    "PC",
+                    "Emotion",
+                    "Confidence",
+                    "Timestamp",
+                ]
+            )
+
+            for snapshot in (
+                queryset.iterator(
+                    chunk_size=1000
+                )
+            ):
+                yield writer.writerow(
+                    [
+                        snapshot.bank.name,
+
+                        snapshot.branch.name,
+
+                        snapshot.visitor.face_id,
+
+                        snapshot.pc_name,
+
+                        snapshot.emotion,
+
+                        snapshot.confidence,
+
+                        snapshot.timestamp.isoformat(),
+                    ]
+                )
+
+        response = (
+            StreamingHttpResponse(
+                csv_rows(),
+                content_type=(
+                    "text/csv"
+                ),
+            )
+        )
+
+        response[
+            "Content-Disposition"
+        ] = (
             "attachment; "
             f'filename="sentiment-'
             f'{date_from}-{date_to}.csv"'
         )
-
-        writer = csv.writer(response)
-
-        writer.writerow(
-            [
-                "Bank",
-                "Branch",
-                "Visitor ID",
-                "PC",
-                "Emotion",
-                "Confidence",
-                "Timestamp",
-            ]
-        )
-
-        for snapshot in queryset:
-            writer.writerow(
-                [
-                    snapshot.bank.name,
-                    snapshot.branch.name,
-                    snapshot.visitor.face_id,
-                    snapshot.pc_name,
-                    snapshot.emotion,
-                    snapshot.confidence,
-                    snapshot.timestamp.isoformat(),
-                ]
-            )
 
         return response
 
@@ -1028,33 +1607,31 @@ def reports(request):
         request,
         "monitor/reports.html",
         {
-            "branches": branches,
+            "branches": (
+                branches
+            ),
         },
     )
 
 
 @login_required
-def settings_view(request):
-    return render(
-        request,
-        "monitor/settings.html",
-        {
-            "page_title": "Settings",
-        },
-    )
-
-
-@login_required
-def snapshot_image(request, snapshot_id):
+def snapshot_image(
+    request,
+    snapshot_id,
+):
     """
     Protect captured images using the same tenant restrictions
     used for dashboard records.
     """
-    snapshot = visible_snapshots(
-        request.user
-    ).filter(
-        pk=snapshot_id
-    ).first()
+    snapshot = (
+        visible_snapshots(
+            request.user
+        )
+        .filter(
+            pk=snapshot_id
+        )
+        .first()
+    )
 
     if not snapshot:
         raise Http404
@@ -1064,7 +1641,8 @@ def snapshot_image(request, snapshot_id):
     ).resolve()
 
     image_path = (
-        root / snapshot.image_path
+        root
+        / snapshot.image_path
     ).resolve()
 
     # Prevent ../../ path traversal.
@@ -1075,6 +1653,10 @@ def snapshot_image(request, snapshot_id):
         raise Http404
 
     return FileResponse(
-        image_path.open("rb"),
-        content_type="image/jpeg",
+        image_path.open(
+            "rb"
+        ),
+        content_type=(
+            "image/jpeg"
+        ),
     )

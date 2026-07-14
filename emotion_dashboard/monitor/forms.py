@@ -55,7 +55,10 @@ class ProfileSettingsForm(
     def clean_email(self):
         email = (
             self.cleaned_data
-            .get("email", "")
+            .get(
+                "email",
+                "",
+            )
             .strip()
             .lower()
         )
@@ -65,8 +68,12 @@ class ProfileSettingsForm(
 
         duplicate_exists = (
             CustomUser.objects
-            .exclude(pk=self.instance.pk)
-            .filter(email__iexact=email)
+            .exclude(
+                pk=self.instance.pk
+            )
+            .filter(
+                email__iexact=email
+            )
             .exists()
         )
 
@@ -107,9 +114,15 @@ class DashboardPreferenceForm(
 
         self.user = user
 
-        branches = Branch.objects.filter(
-            is_active=True
-        ).select_related("bank")
+        branches = (
+            Branch.objects
+            .filter(
+                is_active=True
+            )
+            .select_related(
+                "bank"
+            )
+        )
 
         if user.is_superuser:
             pass
@@ -142,28 +155,6 @@ class DashboardPreferenceForm(
 
         if not branch:
             return None
-
-        if self.user.is_superuser:
-            return branch
-
-        if (
-            self.user.branch_id
-            and branch.id
-            != self.user.branch_id
-        ):
-            raise forms.ValidationError(
-                "You cannot select another branch."
-            )
-
-        if (
-            self.user.bank_id
-            and branch.bank_id
-            != self.user.bank_id
-        ):
-            raise forms.ValidationError(
-                "The branch does not belong "
-                "to your bank."
-            )
 
         return branch
 
@@ -342,14 +333,18 @@ class BranchSettingsForm(
 
     def clean_code(self):
         return (
-            self.cleaned_data["code"]
+            self.cleaned_data[
+                "code"
+            ]
             .strip()
             .upper()
         )
 
     def clean_pc_prefix(self):
         return (
-            self.cleaned_data["pc_prefix"]
+            self.cleaned_data[
+                "pc_prefix"
+            ]
             .strip()
             .upper()
         )

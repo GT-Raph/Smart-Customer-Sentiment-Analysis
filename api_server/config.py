@@ -7,6 +7,29 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def bounded_int_env(
+    name,
+    default,
+    *,
+    minimum,
+    maximum,
+):
+    try:
+        value = int(
+            os.getenv(
+                name,
+                str(default),
+            )
+        )
+    except (TypeError, ValueError):
+        value = default
+
+    return max(
+        minimum,
+        min(value, maximum),
+    )
+
+
 PROJECT_ROOT = (
     Path(__file__).resolve().parent.parent
 )
@@ -56,6 +79,12 @@ DB_CONFIG = {
     "password": os.getenv("DB_PASSWORD"),
     "host": os.getenv("DB_HOST"),
     "port": os.getenv("DB_PORT", "5432"),
+    "connect_timeout": bounded_int_env(
+        "DB_CONNECT_TIMEOUT_SECONDS",
+        10,
+        minimum=1,
+        maximum=60,
+    ),
     "sslmode": os.getenv(
         "DB_SSLMODE",
         "require",

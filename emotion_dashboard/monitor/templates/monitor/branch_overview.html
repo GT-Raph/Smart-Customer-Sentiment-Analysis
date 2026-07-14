@@ -1,5 +1,4 @@
 {% extends "monitor/base.html" %}
-{% load humanize %}
 
 {% block title %}
     Branches | Customer Sentiment
@@ -10,6 +9,8 @@
 {% endblock %}
 
 {% block content %}
+{{ branch_chart_data|json_script:"branch-chart-data" }}
+
 <div class="bento-grid">
     <section class="bento-card accent-card span-8">
         <div class="bento-kicker">
@@ -21,8 +22,8 @@
         </h2>
 
         <p class="text-soft mb-0">
-            Compare visitor volume, positivity and emotion trends
-            across your permitted branches.
+            Compare visitor volume, positivity and
+            emotion trends across your permitted branches.
         </p>
     </section>
 
@@ -121,16 +122,26 @@
                     </strong>
                 </div>
 
-                <div class="progress">
+                <div
+                    class="progress"
+                    role="progressbar"
+                    aria-label="Branch positivity"
+                    aria-valuenow="{{ branch.positivity_percent }}"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                >
                     <div
                         class="progress-bar"
                         style="
-                            width: {{ branch.positivity_percent }}%;
-                            background: linear-gradient(
-                                90deg,
-                                #7c5cff,
-                                #32d69a
-                            );
+                            width:
+                                {{ branch.positivity_percent }}%;
+
+                            background:
+                                linear-gradient(
+                                    90deg,
+                                    #7c5cff,
+                                    #32d69a
+                                );
                         "
                     ></div>
                 </div>
@@ -156,7 +167,8 @@
                 </h5>
 
                 <p class="text-faint mb-0">
-                    No active branches were found for this account.
+                    No active branches were found
+                    for this account.
                 </p>
             </div>
         </section>
@@ -196,8 +208,8 @@
                     </div>
 
                     <div class="chart-empty-text">
-                        Branch comparison appears after sentiment
-                        records have been captured.
+                        Branch comparison appears after
+                        sentiment records have been captured.
                     </div>
                 </div>
             </div>
@@ -214,11 +226,51 @@
             const Charts =
                 window.SentimentCharts;
 
-            const chartLabels =
-                {{ chart_labels|default:"[]"|safe }};
+            const chartDataElement =
+                document.getElementById(
+                    "branch-chart-data"
+                );
 
-            const chartDatasets =
-                {{ chart_datasets|default:"[]"|safe }};
+            let chartData = {
+                labels: [],
+                datasets: []
+            };
+
+            if (chartDataElement) {
+                try {
+                    const parsed =
+                        JSON.parse(
+                            chartDataElement
+                                .textContent
+                        );
+
+                    if (
+                        parsed
+                        && Array.isArray(
+                            parsed.labels
+                        )
+                        && Array.isArray(
+                            parsed.datasets
+                        )
+                    ) {
+                        chartData =
+                            parsed;
+                    }
+
+                } catch (error) {
+                    console.error(
+                        "Invalid branch chart data.",
+                        error
+                    );
+                }
+            }
+
+            if (
+                !window.Chart
+                || !Charts
+            ) {
+                return;
+            }
 
             const palette = [
                 "#7c5cff",
@@ -229,11 +281,15 @@
                 "#5ba8ff"
             ];
 
-            chartDatasets.forEach(
-                function (dataset, index) {
+            chartData.datasets.forEach(
+                function (
+                    dataset,
+                    index
+                ) {
                     const color =
                         palette[
-                            index % palette.length
+                            index
+                            % palette.length
                         ];
 
                     dataset.borderColor =
@@ -245,18 +301,29 @@
                             0.08
                         );
 
-                    dataset.borderWidth = 2.5;
-                    dataset.pointRadius = 0;
-                    dataset.pointHoverRadius = 5;
-                    dataset.pointHitRadius = 12;
-                    dataset.tension = 0.38;
-                    dataset.fill = false;
+                    dataset.borderWidth =
+                        2.5;
+
+                    dataset.pointRadius =
+                        0;
+
+                    dataset.pointHoverRadius =
+                        5;
+
+                    dataset.pointHitRadius =
+                        12;
+
+                    dataset.tension =
+                        0.38;
+
+                    dataset.fill =
+                        false;
                 }
             );
 
             const comparisonHasData =
                 Charts.datasetsHaveData(
-                    chartDatasets
+                    chartData.datasets
                 );
 
             Charts.setEmptyState(
@@ -273,14 +340,14 @@
                     {
                         type: "line",
 
-                        data: {
-                            labels: chartLabels,
-                            datasets: chartDatasets
-                        },
+                        data:
+                            chartData,
 
                         options: {
                             responsive: true,
-                            maintainAspectRatio: false,
+
+                            maintainAspectRatio:
+                                false,
 
                             interaction: {
                                 mode: "index",
@@ -288,101 +355,145 @@
                             },
 
                             plugins: {
-                                legend: Charts.legend(
-                                    "bottom"
-                                ),
+                                legend:
+                                    Charts.legend(
+                                        "bottom"
+                                    ),
 
-                                tooltip: Charts.tooltip()
+                                tooltip:
+                                    Charts.tooltip()
                             },
 
                             scales: {
-                                x: Charts.xScale(
-                                    false
-                                ),
+                                x:
+                                    Charts.xScale(
+                                        false
+                                    ),
 
-                                y: Charts.yScale(
-                                    false
-                                )
+                                y:
+                                    Charts.yScale(
+                                        false
+                                    )
                             }
                         }
                     }
                 );
             }
 
+            /*
+             * Mini charts use the already parsed,
+             * safely serialized branch_chart_data object.
+             */
+
             {% for branch in branches %}
-                (function () {
-                    const miniCanvas =
-                        document.getElementById(
-                            "trend{{ branch.id }}"
-                        );
+                (
+                    function () {
+                        const miniCanvas =
+                            document.getElementById(
+                                "trend{{ branch.id }}"
+                            );
 
-                    const miniData =
-                        {{ branch.trend_counts|default:"[]"|safe }};
+                        const branchDataset =
+                            chartData.datasets[
+                                {{ forloop.counter0 }}
+                            ];
 
-                    if (
-                        !miniCanvas
-                        || !Charts.hasData(miniData)
-                    ) {
-                        if (miniCanvas) {
-                            miniCanvas.style.opacity =
-                                "0.25";
+                        if (
+                            !miniCanvas
+                            || !branchDataset
+                            || !Charts.hasData(
+                                branchDataset.data
+                            )
+                        ) {
+                            if (miniCanvas) {
+                                miniCanvas.style.opacity =
+                                    "0.25";
+                            }
+
+                            return;
                         }
 
-                        return;
-                    }
+                        new Chart(
+                            miniCanvas,
+                            {
+                                type: "line",
 
-                    new Chart(
-                        miniCanvas,
-                        {
-                            type: "line",
+                                data: {
+                                    labels:
+                                        chartData.labels,
 
-                            data: {
-                                labels: chartLabels,
+                                    datasets: [
+                                        {
+                                            data:
+                                                branchDataset
+                                                    .data,
 
-                                datasets: [{
-                                    data: miniData,
-                                    borderColor:
-                                        Charts.colors.cyan,
-                                    backgroundColor:
-                                        Charts.rgba(
-                                            Charts.colors.cyan,
-                                            0.08
-                                        ),
-                                    borderWidth: 2,
-                                    pointRadius: 0,
-                                    tension: 0.4,
-                                    fill: true
-                                }]
-                            },
+                                            borderColor:
+                                                Charts
+                                                    .colors
+                                                    .cyan,
 
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                animation: false,
+                                            backgroundColor:
+                                                Charts.rgba(
+                                                    Charts
+                                                        .colors
+                                                        .cyan,
+                                                    0.08
+                                                ),
 
-                                plugins: {
-                                    legend: {
-                                        display: false
-                                    },
+                                            borderWidth:
+                                                2,
 
-                                    tooltip: {
-                                        enabled: false
-                                    }
+                                            pointRadius:
+                                                0,
+
+                                            tension:
+                                                0.4,
+
+                                            fill:
+                                                true
+                                        }
+                                    ]
                                 },
 
-                                scales: {
-                                    x: {
-                                        display: false
+                                options: {
+                                    responsive:
+                                        true,
+
+                                    maintainAspectRatio:
+                                        false,
+
+                                    animation:
+                                        false,
+
+                                    plugins: {
+                                        legend: {
+                                            display:
+                                                false
+                                        },
+
+                                        tooltip: {
+                                            enabled:
+                                                false
+                                        }
                                     },
 
-                                    y: {
-                                        display: false
+                                    scales: {
+                                        x: {
+                                            display:
+                                                false
+                                        },
+
+                                        y: {
+                                            display:
+                                                false
+                                        }
                                     }
                                 }
                             }
-                        }
-                    );
-                })();
+                        );
+                    }
+                )();
             {% endfor %}
         }
     );

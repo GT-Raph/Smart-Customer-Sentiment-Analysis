@@ -1,4 +1,5 @@
 {% extends "monitor/base.html" %}
+{% load custom_filters %}
 
 {% block title %}
     Visitors
@@ -17,7 +18,10 @@
 
         flex-shrink: 0;
 
-        border: 1px solid var(--border-bright);
+        border:
+            1px solid
+            var(--border-strong);
+
         border-radius: 14px;
     }
 
@@ -30,10 +34,16 @@
         align-items: center;
         justify-content: center;
 
-        color: var(--accent-light);
+        color: var(--purple-light);
         font-weight: 700;
 
-        background: rgba(124, 92, 255, 0.1);
+        background:
+            rgba(
+                124,
+                92,
+                255,
+                0.10
+            );
     }
 </style>
 {% endblock %}
@@ -51,7 +61,9 @@
 
         <p class="text-soft mb-0">
             Showing authorised visitor records for
-            <strong class="text-white">{{ branch_name }}</strong>.
+            <strong class="text-white">
+                {{ branch_name }}
+            </strong>.
         </p>
     </section>
 
@@ -64,8 +76,16 @@
             method="get"
             class="d-flex gap-2"
         >
+            <label
+                class="visually-hidden"
+                for="visitorSearch"
+            >
+                Search by face ID
+            </label>
+
             <input
                 type="text"
+                id="visitorSearch"
                 name="search"
                 class="form-control"
                 placeholder="Search face ID"
@@ -75,6 +95,7 @@
             <button
                 type="submit"
                 class="btn btn-primary"
+                aria-label="Search visitors"
             >
                 <i class="bi bi-search"></i>
             </button>
@@ -133,7 +154,7 @@
                                         <img
                                             src="{{ visitor.image_url }}"
                                             class="visitor-avatar"
-                                            alt="Visitor"
+                                            alt="Visitor {{ visitor.face_id|default:'profile' }}"
                                             onerror="
                                                 this.style.display='none';
                                                 document.getElementById(
@@ -174,7 +195,7 @@
                             </td>
 
                             <td>
-                                <span class="emotion-chip emotion-{{ visitor.last_emotion|lower }}">
+                                <span class="emotion-chip emotion-{{ visitor.last_emotion|lower|default:'none' }}">
                                     {{ visitor.last_emotion|title|default:"Unknown" }}
                                 </span>
                             </td>
@@ -211,35 +232,46 @@
 
         {% if visitors.has_other_pages %}
             <div class="p-3 border-top border-secondary-subtle">
-                <nav>
+                <nav aria-label="Visitor pages">
                     <ul class="pagination pagination-sm mb-0 justify-content-center">
                         {% if visitors.has_previous %}
                             <li class="page-item">
                                 <a
                                     class="page-link"
-                                    href="?page={{ visitors.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}"
+                                    href="?page={{ visitors.previous_page_number }}{% if search_query %}&search={{ search_query|urlencode }}{% endif %}"
+                                    aria-label="Previous page"
                                 >
                                     &laquo;
                                 </a>
                             </li>
                         {% endif %}
 
-                        {% for i in visitors.paginator.page_range %}
-                            <li class="page-item {% if visitors.number == i %}active{% endif %}">
-                                <a
-                                    class="page-link"
-                                    href="?page={{ i }}{% if search_query %}&search={{ search_query }}{% endif %}"
-                                >
-                                    {{ i }}
-                                </a>
-                            </li>
+                        {% for i in visitors|elided_page_range %}
+                            {% if i == visitors.paginator.ELLIPSIS %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">
+                                        {{ i }}
+                                    </span>
+                                </li>
+                            {% else %}
+                                <li class="page-item {% if visitors.number == i %}active{% endif %}">
+                                    <a
+                                        class="page-link"
+                                        href="?page={{ i }}{% if search_query %}&search={{ search_query|urlencode }}{% endif %}"
+                                        {% if visitors.number == i %}aria-current="page"{% endif %}
+                                    >
+                                        {{ i }}
+                                    </a>
+                                </li>
+                            {% endif %}
                         {% endfor %}
 
                         {% if visitors.has_next %}
                             <li class="page-item">
                                 <a
                                     class="page-link"
-                                    href="?page={{ visitors.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}"
+                                    href="?page={{ visitors.next_page_number }}{% if search_query %}&search={{ search_query|urlencode }}{% endif %}"
+                                    aria-label="Next page"
                                 >
                                     &raquo;
                                 </a>

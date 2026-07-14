@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 import numpy as np
@@ -10,9 +11,10 @@ from psycopg2.extras import RealDictCursor
 from .config import DB_CONFIG
 
 
+@contextmanager
 def get_db():
     """
-    Create a new PostgreSQL database connection.
+    Yield a PostgreSQL connection and always close it on exit.
     """
     missing_settings = [
         key
@@ -26,9 +28,14 @@ def get_db():
             + ", ".join(missing_settings)
         )
 
-    return psycopg2.connect(
+    database = psycopg2.connect(
         **DB_CONFIG
     )
+
+    try:
+        yield database
+    finally:
+        database.close()
 
 
 def verify_bank_api_key(
@@ -200,7 +207,7 @@ def get_embeddings_db(
     """
     cursor.execute(
         """
-        SELECT
+        SELECT DISTINCT ON (visitor.face_id)
             visitor.face_id,
             snapshot.embedding
         FROM analytics_snapshot AS snapshot
@@ -209,12 +216,17 @@ def get_embeddings_db(
             ON visitor.id = snapshot.visitor_id
 
         WHERE snapshot.bank_id = %s
+          AND visitor.bank_id = %s
           AND snapshot.embedding IS NOT NULL
           AND snapshot.status = 'done'
 
-        ORDER BY snapshot.timestamp DESC
+        ORDER BY
+            visitor.face_id,
+            snapshot.timestamp DESC,
+            snapshot.id DESC
         """,
         (
+            bank_id,
             bank_id,
         ),
     )
@@ -391,8 +403,6 @@ def save_snapshot_to_db(
                 embedding_json,
             ),
         )
-
-    database.commit()
 
 
 def db_healthcheck():

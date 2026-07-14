@@ -21,32 +21,53 @@ class SuperuserOnlyAdminMixin:
     Settings page instead of Django Admin.
     """
 
-    def has_module_permission(self, request):
-        return request.user.is_active and request.user.is_superuser
+    def has_module_permission(
+        self,
+        request,
+    ):
+        return (
+            request.user.is_active
+            and request.user.is_superuser
+        )
 
     def has_view_permission(
         self,
         request,
         obj=None,
     ):
-        return request.user.is_active and request.user.is_superuser
+        return (
+            request.user.is_active
+            and request.user.is_superuser
+        )
 
-    def has_add_permission(self, request):
-        return request.user.is_active and request.user.is_superuser
+    def has_add_permission(
+        self,
+        request,
+    ):
+        return (
+            request.user.is_active
+            and request.user.is_superuser
+        )
 
     def has_change_permission(
         self,
         request,
         obj=None,
     ):
-        return request.user.is_active and request.user.is_superuser
+        return (
+            request.user.is_active
+            and request.user.is_superuser
+        )
 
     def has_delete_permission(
         self,
         request,
         obj=None,
     ):
-        return request.user.is_active and request.user.is_superuser
+        return (
+            request.user.is_active
+            and request.user.is_superuser
+        )
 
 
 @admin.register(Bank)
@@ -123,7 +144,10 @@ class BankAdmin(
         boolean=True,
         description="API key configured",
     )
-    def api_key_configured(self, obj):
+    def api_key_configured(
+        self,
+        obj,
+    ):
         return obj.has_api_key
 
 
@@ -238,58 +262,72 @@ class CustomUserAdmin(
         "branch",
     )
 
-    fieldsets = UserAdmin.fieldsets + (
-        (
-            "Bank access",
-            {
-                "fields": (
-                    "bank",
-                    "branch",
-                ),
+    fieldsets = (
+        UserAdmin.fieldsets
+        + (
+            (
+                "Bank access",
+                {
+                    "fields": (
+                        "bank",
+                        "branch",
+                    ),
 
-                "description": (
-                    "Leave Branch empty for a bank administrator. "
-                    "Select a Branch to restrict the user to that "
-                    "specific branch."
-                ),
-            },
-        ),
+                    "description": (
+                        "Leave Branch empty for a bank "
+                        "administrator. Select a Branch to "
+                        "restrict the user to that specific "
+                        "branch."
+                    ),
+                },
+            ),
+        )
     )
 
-    add_fieldsets = UserAdmin.add_fieldsets + (
-        (
-            "Bank access",
-            {
-                "classes": (
-                    "wide",
-                ),
+    add_fieldsets = (
+        UserAdmin.add_fieldsets
+        + (
+            (
+                "Bank access",
+                {
+                    "classes": (
+                        "wide",
+                    ),
 
-                "fields": (
-                    "email",
-                    "first_name",
-                    "last_name",
-                    "bank",
-                    "branch",
-                    "is_active",
-                    "is_staff",
-                    "is_superuser",
-                ),
-            },
-        ),
+                    "fields": (
+                        "email",
+                        "first_name",
+                        "last_name",
+                        "bank",
+                        "branch",
+                        "is_active",
+                        "is_staff",
+                        "is_superuser",
+                    ),
+                },
+            ),
+        )
     )
 
     @admin.display(
         description="Access level",
     )
-    def access_level(self, obj):
+    def access_level(
+        self,
+        obj,
+    ):
         if obj.is_superuser:
-            return "Platform administrator"
+            return (
+                "Platform administrator"
+            )
 
         if obj.branch_id:
             return "Branch user"
 
         if obj.bank_id:
-            return "Bank administrator"
+            return (
+                "Bank administrator"
+            )
 
         return "Unassigned"
 
@@ -592,7 +630,10 @@ class CapturedSnapshotAdmin(
         ),
     )
 
-    def has_add_permission(self, request):
+    def has_add_permission(
+        self,
+        request,
+    ):
         # Snapshots must come from the authenticated face API,
         # not from manual Django Admin entry.
         return False
@@ -603,4 +644,12 @@ class CapturedSnapshotAdmin(
         obj=None,
     ):
         # Captured evidence remains read-only in Admin.
+        return False
+
+    def has_delete_permission(
+        self,
+        request,
+        obj=None,
+    ):
+        # Captured evidence cannot be deleted in Admin.
         return False

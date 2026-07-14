@@ -17,7 +17,11 @@
         object-fit: cover;
 
         background: var(--surface-2);
-        border: 1px solid var(--border);
+
+        border:
+            1px solid
+            var(--border);
+
         border-radius: 15px;
     }
 </style>
@@ -86,7 +90,7 @@
                 </h3>
 
                 <div class="bento-subtitle">
-                    All branch detections
+                    All completed branch detections
                 </div>
             </div>
 
@@ -112,7 +116,8 @@
                     </div>
 
                     <div class="chart-empty-text">
-                        This branch has no processed emotion records.
+                        This branch has no completed
+                        emotion records.
                     </div>
                 </div>
             </div>
@@ -153,7 +158,8 @@
                     </div>
 
                     <div class="chart-empty-text">
-                        Hourly activity appears after captures are processed.
+                        Hourly activity appears after
+                        captures are processed.
                     </div>
                 </div>
             </div>
@@ -168,7 +174,8 @@
                 </h3>
 
                 <div class="bento-subtitle">
-                    Percentage of happy detections per hour
+                    Percentage of happy detections
+                    per hour
                 </div>
             </div>
 
@@ -200,7 +207,7 @@
                     </div>
 
                     <div class="chart-empty-text">
-                        Positivity percentages appear after happy
+                        Positivity appears after happy
                         emotions are detected.
                     </div>
                 </div>
@@ -216,8 +223,8 @@
                 </h3>
 
                 <div class="bento-subtitle">
-                    Images are accessible only to authorised
-                    users in this bank.
+                    Images are accessible only to
+                    authorised users in this bank.
                 </div>
             </div>
 
@@ -281,7 +288,7 @@
                             </td>
 
                             <td>
-                                <span class="emotion-chip emotion-{{ visit.emotion }}">
+                                <span class="emotion-chip emotion-{{ visit.emotion|default:'none' }}">
                                     {{ visit.emotion|default:"Unknown" }}
                                 </span>
                             </td>
@@ -313,8 +320,8 @@
                                     </h5>
 
                                     <p class="text-faint mb-0">
-                                        This branch does not yet have
-                                        sentiment records.
+                                        This branch does not yet
+                                        have sentiment records.
                                     </p>
                                 </div>
                             </td>
@@ -335,6 +342,13 @@
             const Charts =
                 window.SentimentCharts;
 
+            if (
+                !window.Chart
+                || !Charts
+            ) {
+                return;
+            }
+
             const emotionLabels =
                 {{ emotion_labels|default:"[]"|safe }};
 
@@ -354,7 +368,7 @@
                 {{ hourly_positivity|default:"[]"|safe }};
 
             /*
-             * Distribution
+             * Emotion distribution
              */
 
             const emotionHasData =
@@ -377,29 +391,43 @@
                         type: "doughnut",
 
                         data: {
-                            labels: emotionLabels,
+                            labels:
+                                emotionLabels,
 
-                            datasets: [{
-                                data: emotionCounts,
-                                backgroundColor: emotionColors,
-                                borderColor: "#121824",
-                                borderWidth: 4,
-                                hoverOffset: 9,
-                                spacing: 2
-                            }]
+                            datasets: [
+                                {
+                                    data:
+                                        emotionCounts,
+
+                                    backgroundColor:
+                                        emotionColors,
+
+                                    borderColor:
+                                        "#121824",
+
+                                    borderWidth: 4,
+                                    hoverOffset: 9,
+                                    spacing: 2
+                                }
+                            ]
                         },
 
                         options: {
                             responsive: true,
-                            maintainAspectRatio: false,
+
+                            maintainAspectRatio:
+                                false,
+
                             cutout: "71%",
 
                             plugins: {
-                                legend: Charts.legend(
-                                    "bottom"
-                                ),
+                                legend:
+                                    Charts.legend(
+                                        "bottom"
+                                    ),
 
-                                tooltip: Charts.tooltip()
+                                tooltip:
+                                    Charts.tooltip()
                             }
                         }
                     }
@@ -430,45 +458,63 @@
                         type: "bar",
 
                         data: {
-                            labels: hourlyLabels,
+                            labels:
+                                hourlyLabels,
 
-                            datasets: [{
-                                label: "Detections",
-                                data: hourlyVisits,
-                                backgroundColor:
-                                    Charts.rgba(
-                                        Charts.colors.purple,
-                                        0.75
-                                    ),
-                                borderColor:
-                                    Charts.colors.purple,
-                                borderWidth: 1,
-                                borderRadius: 7,
-                                borderSkipped: false,
-                                maxBarThickness: 32
-                            }]
+                            datasets: [
+                                {
+                                    label:
+                                        "Detections",
+
+                                    data:
+                                        hourlyVisits,
+
+                                    backgroundColor:
+                                        Charts.rgba(
+                                            Charts
+                                                .colors
+                                                .purple,
+                                            0.75
+                                        ),
+
+                                    borderColor:
+                                        Charts
+                                            .colors
+                                            .purple,
+
+                                    borderWidth: 1,
+                                    borderRadius: 7,
+                                    borderSkipped: false,
+                                    maxBarThickness: 32
+                                }
+                            ]
                         },
 
                         options: {
                             responsive: true,
-                            maintainAspectRatio: false,
+
+                            maintainAspectRatio:
+                                false,
 
                             plugins: {
                                 legend: {
                                     display: false
                                 },
 
-                                tooltip: Charts.tooltip()
+                                tooltip:
+                                    Charts.tooltip()
                             },
 
                             scales: {
-                                x: Charts.xScale(
-                                    false
-                                ),
+                                x:
+                                    Charts.xScale(
+                                        false
+                                    ),
 
-                                y: Charts.yScale(
-                                    false
-                                )
+                                y:
+                                    Charts.yScale(
+                                        false
+                                    )
                             }
                         }
                     }
@@ -476,7 +522,7 @@
             }
 
             /*
-             * Positivity
+             * Hourly positivity
              */
 
             const positivityHasData =
@@ -491,6 +537,27 @@
             );
 
             if (positivityHasData) {
+                const positivityYScale =
+                    Charts.yScale(
+                        false,
+                        100
+                    );
+
+                /*
+                 * Preserve the precision, colour and
+                 * padding returned by Charts.yScale()
+                 * while adding percentage formatting.
+                 */
+                positivityYScale.ticks = {
+                    ...positivityYScale.ticks,
+
+                    callback: function (
+                        value
+                    ) {
+                        return value + "%";
+                    }
+                };
+
                 new Chart(
                     document.getElementById(
                         "positivityChart"
@@ -499,30 +566,45 @@
                         type: "line",
 
                         data: {
-                            labels: hourlyLabels,
+                            labels:
+                                hourlyLabels,
 
-                            datasets: [{
-                                label: "Happy detections",
-                                data: hourlyPositivity,
-                                borderColor:
-                                    Charts.colors.green,
-                                backgroundColor:
-                                    Charts.rgba(
-                                        Charts.colors.green,
-                                        0.08
-                                    ),
-                                borderWidth: 2.5,
-                                tension: 0.38,
-                                fill: true,
-                                pointRadius: 0,
-                                pointHoverRadius: 5,
-                                pointHitRadius: 12
-                            }]
+                            datasets: [
+                                {
+                                    label:
+                                        "Happy detections",
+
+                                    data:
+                                        hourlyPositivity,
+
+                                    borderColor:
+                                        Charts
+                                            .colors
+                                            .green,
+
+                                    backgroundColor:
+                                        Charts.rgba(
+                                            Charts
+                                                .colors
+                                                .green,
+                                            0.08
+                                        ),
+
+                                    borderWidth: 2.5,
+                                    tension: 0.38,
+                                    fill: true,
+                                    pointRadius: 0,
+                                    pointHoverRadius: 5,
+                                    pointHitRadius: 12
+                                }
+                            ]
                         },
 
                         options: {
                             responsive: true,
-                            maintainAspectRatio: false,
+
+                            maintainAspectRatio:
+                                false,
 
                             interaction: {
                                 mode: "index",
@@ -530,35 +612,23 @@
                             },
 
                             plugins: {
-                                legend: Charts.legend(
-                                    "bottom"
-                                ),
+                                legend:
+                                    Charts.legend(
+                                        "bottom"
+                                    ),
 
-                                tooltip: Charts.tooltip()
+                                tooltip:
+                                    Charts.tooltip()
                             },
 
                             scales: {
-                                x: Charts.xScale(
-                                    false
-                                ),
-
-                                y: {
-                                    ...Charts.yScale(
-                                        false,
-                                        100
+                                x:
+                                    Charts.xScale(
+                                        false
                                     ),
 
-                                    ticks: {
-                                        color: "#778298",
-                                        padding: 9,
-
-                                        callback: function (
-                                            value
-                                        ) {
-                                            return value + "%";
-                                        }
-                                    }
-                                }
+                                y:
+                                    positivityYScale
                             }
                         }
                     }

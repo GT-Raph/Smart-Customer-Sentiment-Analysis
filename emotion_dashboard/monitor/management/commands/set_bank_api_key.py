@@ -33,7 +33,9 @@ class Command(BaseCommand):
         **options,
     ):
         bank_code = (
-            options["bank_code"]
+            options[
+                "bank_code"
+            ]
             .strip()
             .upper()
         )
@@ -52,13 +54,23 @@ class Command(BaseCommand):
             ) from error
 
         raw_key = (
-            options.get("raw_key")
-            or secrets.token_urlsafe(32)
+            options.get(
+                "raw_key"
+            )
+            or secrets.token_urlsafe(
+                32
+            )
         )
 
-        bank.set_api_key(
-            raw_key
-        )
+        try:
+            bank.set_api_key(
+                raw_key
+            )
+
+        except ValueError as error:
+            raise CommandError(
+                str(error)
+            ) from error
 
         bank.save(
             update_fields=[
@@ -70,7 +82,7 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 (
-                    f"API key updated for "
+                    "API key updated for "
                     f"{bank.code}."
                 )
             )

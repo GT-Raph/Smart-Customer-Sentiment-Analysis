@@ -12,8 +12,13 @@
 <style>
     .settings-form-grid {
         display: grid;
+
         grid-template-columns:
-            repeat(2, minmax(0, 1fr));
+            repeat(
+                2,
+                minmax(0, 1fr)
+            );
+
         gap: 16px;
     }
 
@@ -30,7 +35,8 @@
         padding: 17px 0;
 
         border-bottom:
-            1px solid var(--border);
+            1px solid
+            var(--border);
     }
 
     .settings-switch-row:last-child {
@@ -58,22 +64,37 @@
         cursor: pointer;
 
         background-color:
-            rgba(255, 255, 255, 0.08);
+            rgba(
+                255,
+                255,
+                255,
+                0.08
+            );
 
-        border-color: var(--border-strong);
+        border-color:
+            var(--border-strong);
     }
 
     .form-check-input:checked {
-        background-color: var(--purple);
-        border-color: var(--purple);
+        background-color:
+            var(--purple);
+
+        border-color:
+            var(--purple);
     }
 
     .form-check-input:focus {
-        border-color: var(--purple);
+        border-color:
+            var(--purple);
 
         box-shadow:
             0 0 0 4px
-            rgba(124, 92, 255, 0.12);
+            rgba(
+                124,
+                92,
+                255,
+                0.12
+            );
     }
 
     .form-errors {
@@ -84,11 +105,21 @@
         font-size: 0.73rem;
 
         background:
-            rgba(255, 94, 125, 0.08);
+            rgba(
+                255,
+                94,
+                125,
+                0.08
+            );
 
         border:
             1px solid
-            rgba(255, 94, 125, 0.22);
+            rgba(
+                255,
+                94,
+                125,
+                0.22
+            );
 
         border-radius: 13px;
     }
@@ -106,9 +137,17 @@
         padding: 15px;
 
         background:
-            rgba(0, 0, 0, 0.18);
+            rgba(
+                0,
+                0,
+                0,
+                0.18
+            );
 
-        border: 1px solid var(--border);
+        border:
+            1px solid
+            var(--border);
+
         border-radius: 16px;
     }
 
@@ -129,11 +168,21 @@
         color: var(--green);
 
         background:
-            rgba(50, 214, 154, 0.08);
+            rgba(
+                50,
+                214,
+                154,
+                0.08
+            );
 
         border:
             1px solid
-            rgba(50, 214, 154, 0.17);
+            rgba(
+                50,
+                214,
+                154,
+                0.17
+            );
 
         border-radius: 12px;
     }
@@ -156,36 +205,59 @@
         color: #aef3d3;
 
         background:
-            rgba(50, 214, 154, 0.08);
+            rgba(
+                50,
+                214,
+                154,
+                0.08
+            );
 
         border:
             1px solid
-            rgba(50, 214, 154, 0.19);
+            rgba(
+                50,
+                214,
+                154,
+                0.19
+            );
     }
 
     .computer-status.offline {
         color: #ffacba;
 
         background:
-            rgba(255, 94, 125, 0.08);
+            rgba(
+                255,
+                94,
+                125,
+                0.08
+            );
 
         border:
             1px solid
-            rgba(255, 94, 125, 0.19);
+            rgba(
+                255,
+                94,
+                125,
+                0.19
+            );
     }
 
     .computer-status-dot {
         width: 7px;
         height: 7px;
+
         border-radius: 50%;
     }
 
     .online .computer-status-dot {
-        background: var(--green);
+        background:
+            var(--green);
     }
 
     .offline .computer-status-dot {
-        background: var(--red);
+        background:
+            var(--red);
     }
 
     .api-key-box {
@@ -194,7 +266,11 @@
         padding: 18px;
 
         background: #080d15;
-        border: 1px solid var(--border-strong);
+
+        border:
+            1px solid
+            var(--border-strong);
+
         border-radius: 16px;
     }
 
@@ -202,10 +278,12 @@
         padding-right: 50px;
 
         color: var(--cyan);
+
         font-family:
             "Cascadia Code",
             Consolas,
             monospace;
+
         font-size: 0.78rem;
         word-break: break-all;
     }
@@ -220,13 +298,22 @@
         overflow: hidden;
 
         background:
-            rgba(0, 0, 0, 0.15);
+            rgba(
+                0,
+                0,
+                0,
+                0.15
+            );
 
-        border: 1px solid var(--border);
+        border:
+            1px solid
+            var(--border);
+
         border-radius: 17px;
     }
 
-    .branch-settings-item + .branch-settings-item {
+    .branch-settings-item
+    + .branch-settings-item {
         margin-top: 12px;
     }
 
@@ -242,13 +329,16 @@
         list-style: none;
     }
 
-    .branch-settings-item summary::-webkit-details-marker {
+    .branch-settings-item
+    summary::-webkit-details-marker {
         display: none;
     }
 
-    .branch-settings-item[open] summary {
+    .branch-settings-item[open]
+    summary {
         border-bottom:
-            1px solid var(--border);
+            1px solid
+            var(--border);
     }
 
     .branch-settings-body {
@@ -265,17 +355,26 @@
         font-size: 0.68rem;
 
         background:
-            rgba(53, 215, 220, 0.07);
+            rgba(
+                53,
+                215,
+                220,
+                0.07
+            );
 
         border-radius: 8px;
     }
 
-    @media (max-width: 767.98px) {
+    @media (
+        max-width: 767.98px
+    ) {
         .settings-form-grid {
-            grid-template-columns: 1fr;
+            grid-template-columns:
+                1fr;
         }
 
-        .settings-form-grid .full-width {
+        .settings-form-grid
+        .full-width {
             grid-column: auto;
         }
 
@@ -333,6 +432,7 @@
                     type="button"
                     class="btn btn-outline-primary btn-sm api-copy-button"
                     id="copyApiKey"
+                    aria-label="Copy the new API key"
                 >
                     <i class="bi bi-copy"></i>
                 </button>
@@ -399,7 +499,10 @@
 
             <div class="settings-form-grid">
                 <div>
-                    <label class="form-label">
+                    <label
+                        class="form-label"
+                        for="{{ profile_form.first_name.id_for_label }}"
+                    >
                         First name
                     </label>
 
@@ -407,7 +510,10 @@
                 </div>
 
                 <div>
-                    <label class="form-label">
+                    <label
+                        class="form-label"
+                        for="{{ profile_form.last_name.id_for_label }}"
+                    >
                         Last name
                     </label>
 
@@ -415,7 +521,10 @@
                 </div>
 
                 <div class="full-width">
-                    <label class="form-label">
+                    <label
+                        class="form-label"
+                        for="{{ profile_form.email.id_for_label }}"
+                    >
                         Email address
                     </label>
 
@@ -466,7 +575,10 @@
 
             <div class="d-grid gap-3">
                 <div>
-                    <label class="form-label">
+                    <label
+                        class="form-label"
+                        for="{{ password_form.old_password.id_for_label }}"
+                    >
                         Current password
                     </label>
 
@@ -474,7 +586,10 @@
                 </div>
 
                 <div>
-                    <label class="form-label">
+                    <label
+                        class="form-label"
+                        for="{{ password_form.new_password1.id_for_label }}"
+                    >
                         New password
                     </label>
 
@@ -482,7 +597,10 @@
                 </div>
 
                 <div>
-                    <label class="form-label">
+                    <label
+                        class="form-label"
+                        for="{{ password_form.new_password2.id_for_label }}"
+                    >
                         Confirm new password
                     </label>
 
@@ -551,6 +669,7 @@
                             class="ui-select-toggle dropdown-toggle"
                             type="button"
                             data-bs-toggle="dropdown"
+                            aria-expanded="false"
                         >
                             <span data-ui-select-label>
                                 {{ preferences.get_default_date_range_display }}
@@ -622,6 +741,7 @@
                             class="ui-select-toggle dropdown-toggle"
                             type="button"
                             data-bs-toggle="dropdown"
+                            aria-expanded="false"
                         >
                             <span data-ui-select-label>
                                 {{ preferences.get_default_hourly_range_display }}
@@ -673,6 +793,7 @@
                             class="ui-select-toggle dropdown-toggle"
                             type="button"
                             data-bs-toggle="dropdown"
+                            aria-expanded="false"
                         >
                             <span data-ui-select-label>
                                 {% if preferences.default_branch %}
@@ -734,6 +855,7 @@
                             class="ui-select-toggle dropdown-toggle"
                             type="button"
                             data-bs-toggle="dropdown"
+                            aria-expanded="false"
                         >
                             <span data-ui-select-label>
                                 {{ preferences.get_auto_refresh_seconds_display }}
@@ -762,9 +884,12 @@
             <div class="mt-4">
                 <div class="settings-switch-row">
                     <div>
-                        <div class="settings-switch-title">
+                        <label
+                            class="settings-switch-title"
+                            for="dashboardCompactMode"
+                        >
                             Compact bento layout
-                        </div>
+                        </label>
 
                         <div class="settings-switch-text">
                             Reduce card padding and spacing
@@ -775,6 +900,7 @@
                     <input
                         class="form-check-input"
                         type="checkbox"
+                        id="dashboardCompactMode"
                         name="dashboard-compact_mode"
                         {% if preferences.compact_mode %}checked{% endif %}
                     >
@@ -782,9 +908,12 @@
 
                 <div class="settings-switch-row">
                     <div>
-                        <div class="settings-switch-title">
+                        <label
+                            class="settings-switch-title"
+                            for="dashboardReduceMotion"
+                        >
                             Reduce animation
-                        </div>
+                        </label>
 
                         <div class="settings-switch-text">
                             Minimise interface movement and
@@ -795,6 +924,7 @@
                     <input
                         class="form-check-input"
                         type="checkbox"
+                        id="dashboardReduceMotion"
                         name="dashboard-reduce_motion"
                         {% if preferences.reduce_motion %}checked{% endif %}
                     >
@@ -844,9 +974,12 @@
 
             <div class="settings-switch-row pt-0">
                 <div>
-                    <div class="settings-switch-title">
+                    <label
+                        class="settings-switch-title"
+                        for="{{ notification_form.email_weekly_summary.id_for_label }}"
+                    >
                         Weekly email summary
-                    </div>
+                    </label>
 
                     <div class="settings-switch-text">
                         Store this preference for the
@@ -859,9 +992,12 @@
 
             <div class="settings-switch-row">
                 <div>
-                    <div class="settings-switch-title">
+                    <label
+                        class="settings-switch-title"
+                        for="{{ notification_form.notify_negative.id_for_label }}"
+                    >
                         Negative-emotion alerts
-                    </div>
+                    </label>
 
                     <div class="settings-switch-text">
                         Enable alerts when sad and angry
@@ -874,7 +1010,10 @@
 
             <div class="settings-form-grid mt-4">
                 <div>
-                    <label class="form-label">
+                    <label
+                        class="form-label"
+                        for="{{ notification_form.negative_threshold.id_for_label }}"
+                    >
                         Negative threshold (%)
                     </label>
 
@@ -882,7 +1021,10 @@
                 </div>
 
                 <div>
-                    <label class="form-label">
+                    <label
+                        class="form-label"
+                        for="{{ notification_form.minimum_detections.id_for_label }}"
+                    >
                         Minimum detections
                     </label>
 
@@ -1163,6 +1305,7 @@
                                     class="ui-select-toggle dropdown-toggle"
                                     type="button"
                                     data-bs-toggle="dropdown"
+                                    aria-expanded="false"
                                 >
                                     <span data-ui-select-label>
                                         {{ row.form.timezone.value }}
@@ -1188,7 +1331,10 @@
                         </div>
 
                         <div>
-                            <label class="form-label">
+                            <label
+                                class="form-label"
+                                for="{{ row.form.image_retention_days.id_for_label }}"
+                            >
                                 Image retention days
                             </label>
 
@@ -1196,7 +1342,10 @@
                         </div>
 
                         <div>
-                            <label class="form-label">
+                            <label
+                                class="form-label"
+                                for="{{ row.form.record_retention_days.id_for_label }}"
+                            >
                                 Record retention days
                             </label>
 
@@ -1204,7 +1353,10 @@
                         </div>
 
                         <div class="full-width">
-                            <label class="form-label">
+                            <label
+                                class="form-label"
+                                for="{{ row.form.offline_after_minutes.id_for_label }}"
+                            >
                                 Offline after minutes
                             </label>
 
@@ -1214,9 +1366,12 @@
 
                     <div class="settings-switch-row mt-3">
                         <div>
-                            <div class="settings-switch-title">
+                            <label
+                                class="settings-switch-title"
+                                for="{{ row.form.delete_images_after_retention.id_for_label }}"
+                            >
                                 Delete expired images
-                            </div>
+                            </label>
 
                             <div class="settings-switch-text">
                                 Delete captured image files after
@@ -1293,7 +1448,7 @@
                     </div>
                 </div>
 
-                <div class="alert mt-4 mb-0">
+                <div class="alert alert-warning mt-4 mb-0">
                     Rotating the key immediately disables
                     the old key. Every capture computer
                     must then receive the new value.
@@ -1401,7 +1556,10 @@
 
                             <div class="settings-form-grid">
                                 <div>
-                                    <label class="form-label">
+                                    <label
+                                        class="form-label"
+                                        for="{{ row.form.name.id_for_label }}"
+                                    >
                                         Branch name
                                     </label>
 
@@ -1409,7 +1567,10 @@
                                 </div>
 
                                 <div>
-                                    <label class="form-label">
+                                    <label
+                                        class="form-label"
+                                        for="{{ row.form.code.id_for_label }}"
+                                    >
                                         Branch code
                                     </label>
 
@@ -1417,7 +1578,10 @@
                                 </div>
 
                                 <div>
-                                    <label class="form-label">
+                                    <label
+                                        class="form-label"
+                                        for="{{ row.form.pc_prefix.id_for_label }}"
+                                    >
                                         PC prefix
                                     </label>
 
@@ -1425,7 +1589,10 @@
                                 </div>
 
                                 <div>
-                                    <label class="form-label">
+                                    <label
+                                        class="form-label"
+                                        for="{{ row.form.location.id_for_label }}"
+                                    >
                                         Location
                                     </label>
 
@@ -1435,9 +1602,12 @@
 
                             <div class="settings-switch-row">
                                 <div>
-                                    <div class="settings-switch-title">
+                                    <label
+                                        class="settings-switch-title"
+                                        for="{{ row.form.is_active.id_for_label }}"
+                                    >
                                         Active branch
-                                    </div>
+                                    </label>
 
                                     <div class="settings-switch-text">
                                         Inactive branches cannot receive
@@ -1497,15 +1667,25 @@
                             await navigator
                                 .clipboard
                                 .writeText(
-                                    apiKey.textContent.trim()
+                                    apiKey
+                                        .textContent
+                                        .trim()
                                 );
 
                             copyButton.innerHTML =
                                 '<i class="bi bi-check-lg"></i>';
+
+                            copyButton.setAttribute(
+                                "aria-label",
+                                "API key copied"
+                            );
+
                         } catch (error) {
                             window.prompt(
                                 "Copy the API key:",
-                                apiKey.textContent.trim()
+                                apiKey
+                                    .textContent
+                                    .trim()
                             );
                         }
                     }

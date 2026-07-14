@@ -1,4 +1,5 @@
 import logging
+import threading
 from pathlib import Path
 from typing import Annotated
 
@@ -49,6 +50,9 @@ logging.basicConfig(
 logger = logging.getLogger(
     "face_api"
 )
+
+
+FACE_PROCESSING_LOCK = threading.Lock()
 
 
 app = FastAPI(
@@ -193,7 +197,7 @@ def process_face_image(
 ):
     """
     Detect all faces, generate embeddings, match visitors,
-    analyse emotions and save the resulting records.
+    analyse emotions and save the resulting records atomically.
     """
     DeepFace = get_deepface()
 
@@ -214,162 +218,168 @@ def process_face_image(
         )
 
     with get_db() as database:
-        with database.cursor(
-            cursor_factory=RealDictCursor
-        ) as cursor:
-            known_embeddings = get_embeddings_db(
-                cursor,
-                bank["id"],
-            )
-
-        saved_faces = []
-
-        for face_index, extracted_face in enumerate(
-            extracted_faces
-        ):
-            facial_area = (
-                extracted_face.get(
-                    "facial_area"
+        try:
+            with database.cursor(
+                cursor_factory=RealDictCursor
+            ) as cursor:
+                known_embeddings = get_embeddings_db(
+                    cursor,
+                    bank["id"],
                 )
-                or {}
-            )
 
-            x = max(
-                0,
-                int(
-                    facial_area.get(
-                        "x",
-                        0,
+            saved_faces = []
+
+            for face_index, extracted_face in enumerate(
+                extracted_faces
+            ):
+                facial_area = (
+                    extracted_face.get(
+                        "facial_area"
                     )
-                ),
-            )
-
-            y = max(
-                0,
-                int(
-                    facial_area.get(
-                        "y",
-                        0,
-                    )
-                ),
-            )
-
-            width = int(
-                facial_area.get(
-                    "w",
-                    0,
+                    or {}
                 )
-            )
 
-            height = int(
-                facial_area.get(
-                    "h",
+                x = max(
                     0,
-                )
-            )
-
-            if width > 0 and height > 0:
-                face_image = frame[
-                    y:y + height,
-                    x:x + width,
-                ]
-
-            else:
-                face_image = frame
-
-            if face_image.size == 0:
-                continue
-
-            enhanced_face = enhance_face(
-                face_image
-            )
-
-            representation_results = DeepFace.represent(
-                img_path=enhanced_face,
-                model_name=EMBEDDING_MODEL,
-                enforce_detection=False,
-            )
-
-            if not representation_results:
-                continue
-
-            embedding = representation_results[0][
-                "embedding"
-            ]
-
-            matched_face_id = match_face_id(
-                embedding,
-                known_embeddings,
-            )
-
-            face_id = (
-                matched_face_id
-                or str(ulid.new())
-            )
-
-            (
-                emotion,
-                confidence,
-                emotion_vector,
-            ) = detect_emotion(
-                enhanced_face
-            )
-
-            snapshot_job_id = (
-                job_id
-                if face_index == 0
-                else f"{job_id}-{face_index}"
-            )
-
-            save_snapshot_to_db(
-                database,
-
-                job_id=snapshot_job_id,
-
-                bank_id=bank["id"],
-
-                branch_id=branch["id"],
-
-                face_id=face_id,
-
-                pc_name=pc_name,
-
-                image_path=relative_image_path,
-
-                embedding=embedding,
-
-                emotion=emotion,
-
-                confidence=confidence,
-
-                emotion_vector=emotion_vector,
-            )
-
-            known_embeddings.append(
-                (
-                    face_id,
-
-                    np.asarray(
-                        embedding,
-                        dtype=np.float64,
+                    int(
+                        facial_area.get(
+                            "x",
+                            0,
+                        )
                     ),
                 )
-            )
 
-            saved_faces.append(
-                {
-                    "face_id": face_id,
-                    "emotion": emotion,
-                    "confidence": confidence,
-                }
-            )
+                y = max(
+                    0,
+                    int(
+                        facial_area.get(
+                            "y",
+                            0,
+                        )
+                    ),
+                )
 
-        if not saved_faces:
-            raise ValueError(
-                "The image did not produce a valid face record."
-            )
+                width = int(
+                    facial_area.get(
+                        "w",
+                        0,
+                    )
+                )
 
-        return saved_faces
+                height = int(
+                    facial_area.get(
+                        "h",
+                        0,
+                    )
+                )
+
+                if width > 0 and height > 0:
+                    face_image = frame[
+                        y:y + height,
+                        x:x + width,
+                    ]
+
+                else:
+                    face_image = frame
+
+                if face_image.size == 0:
+                    continue
+
+                enhanced_face = enhance_face(
+                    face_image
+                )
+
+                representation_results = DeepFace.represent(
+                    img_path=enhanced_face,
+                    model_name=EMBEDDING_MODEL,
+                    enforce_detection=False,
+                )
+
+                if not representation_results:
+                    continue
+
+                embedding = representation_results[0][
+                    "embedding"
+                ]
+
+                matched_face_id = match_face_id(
+                    embedding,
+                    known_embeddings,
+                )
+
+                face_id = (
+                    matched_face_id
+                    or str(ulid.new())
+                )
+
+                (
+                    emotion,
+                    confidence,
+                    emotion_vector,
+                ) = detect_emotion(
+                    enhanced_face
+                )
+
+                snapshot_job_id = (
+                    job_id
+                    if face_index == 0
+                    else f"{job_id}-{face_index}"
+                )
+
+                save_snapshot_to_db(
+                    database,
+
+                    job_id=snapshot_job_id,
+
+                    bank_id=bank["id"],
+
+                    branch_id=branch["id"],
+
+                    face_id=face_id,
+
+                    pc_name=pc_name,
+
+                    image_path=relative_image_path,
+
+                    embedding=embedding,
+
+                    emotion=emotion,
+
+                    confidence=confidence,
+
+                    emotion_vector=emotion_vector,
+                )
+
+                known_embeddings.append(
+                    (
+                        face_id,
+
+                        np.asarray(
+                            embedding,
+                            dtype=np.float64,
+                        ),
+                    )
+                )
+
+                saved_faces.append(
+                    {
+                        "face_id": face_id,
+                        "emotion": emotion,
+                        "confidence": confidence,
+                    }
+                )
+
+            if not saved_faces:
+                raise ValueError(
+                    "The image did not produce a valid face record."
+                )
+
+            database.commit()
+            return saved_faces
+
+        except Exception:
+            database.rollback()
+            raise
 
 
 @app.get("/")
@@ -410,7 +420,7 @@ def health():
     "/upload-face",
     status_code=status.HTTP_201_CREATED,
 )
-async def upload_face(
+def upload_face(
     file: UploadFile = File(...),
 
     pc_name: str = Form(
@@ -440,6 +450,16 @@ async def upload_face(
         )
 
     if (
+        "/" in normalized_pc_name
+        or "\\" in normalized_pc_name
+        or normalized_pc_name in {".", ".."}
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An invalid image storage path was generated.",
+        )
+
+    if (
         file.content_type
         not in ALLOWED_IMAGE_TYPES
     ):
@@ -451,7 +471,7 @@ async def upload_face(
             ),
         )
 
-    uploaded_data = await file.read(
+    uploaded_data = file.file.read(
         MAX_UPLOAD_BYTES + 1
     )
 
@@ -531,11 +551,6 @@ async def upload_face(
         / relative_image_path
     ).resolve()
 
-    absolute_image_path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
     if (
         CAPTURED_FACES_ROOT
         not in absolute_image_path.parents
@@ -544,6 +559,11 @@ async def upload_face(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="An invalid image storage path was generated.",
         )
+
+    absolute_image_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
     image_saved = cv2.imwrite(
         str(absolute_image_path),
@@ -557,19 +577,20 @@ async def upload_face(
         )
 
     try:
-        processed_faces = process_face_image(
-            frame,
+        with FACE_PROCESSING_LOCK:
+            processed_faces = process_face_image(
+                frame,
 
-            job_id=job_id,
+                job_id=job_id,
 
-            bank=bank,
+                bank=bank,
 
-            branch=branch,
+                branch=branch,
 
-            pc_name=normalized_pc_name,
+                pc_name=normalized_pc_name,
 
-            relative_image_path=relative_image_path,
-        )
+                relative_image_path=relative_image_path,
+            )
 
     except ValueError as error:
         absolute_image_path.unlink(

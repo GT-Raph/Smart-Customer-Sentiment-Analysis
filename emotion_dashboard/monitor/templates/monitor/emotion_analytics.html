@@ -292,49 +292,73 @@
             const Charts =
                 window.SentimentCharts;
 
+            if (
+                !window.Chart
+                || !Charts
+            ) {
+                return;
+            }
+
             const chartDataElement =
                 document.getElementById(
                     "emotion-chart-data"
                 );
 
-            const chartData =
-                JSON.parse(
-                    chartDataElement.textContent
-                );
+            let chartData = null;
 
-            chartData.datasets.forEach(
-                function (dataset) {
-                    const emotion =
-                        String(
-                            dataset.label
-                            || ""
-                        ).toLowerCase();
-
-                    const color =
-                        Charts.colors[emotion]
-                        || Charts.colors.purple;
-
-                    dataset.borderColor =
-                        color;
-
-                    dataset.backgroundColor =
-                        Charts.rgba(
-                            color,
-                            0.08
+            if (chartDataElement) {
+                try {
+                    const parsedChartData =
+                        JSON.parse(
+                            chartDataElement.textContent
                         );
 
-                    dataset.borderWidth = 2.5;
-                    dataset.pointRadius = 0;
-                    dataset.pointHoverRadius = 5;
-                    dataset.pointHitRadius = 12;
-                    dataset.tension = 0.38;
-                    dataset.fill = true;
+                    if (
+                        parsedChartData
+                        && Array.isArray(
+                            parsedChartData.labels
+                        )
+                        && Array.isArray(
+                            parsedChartData.datasets
+                        )
+                    ) {
+                        const validDatasets =
+                            parsedChartData.datasets.filter(
+                                function (dataset) {
+                                    return (
+                                        dataset
+                                        && typeof dataset
+                                            === "object"
+                                        && Array.isArray(
+                                            dataset.data
+                                        )
+                                    );
+                                }
+                            );
+
+                        chartData = {
+                            labels:
+                                parsedChartData.labels,
+
+                            datasets:
+                                validDatasets
+                        };
+                    }
+
+                } catch (error) {
+                    console.error(
+                        "Invalid emotion trend data.",
+                        error
+                    );
                 }
-            );
+            }
 
             const trendHasData =
-                Charts.datasetsHaveData(
-                    chartData.datasets
+                Boolean(
+                    chartData
+                    && Charts.datasetsHaveData(
+                        chartData.datasets
+                    )
                 );
 
             Charts.setEmptyState(
@@ -344,17 +368,63 @@
             );
 
             if (trendHasData) {
+                chartData.datasets.forEach(
+                    function (dataset) {
+                        const emotion =
+                            String(
+                                dataset.label
+                                || ""
+                            ).toLowerCase();
+
+                        const color =
+                            Charts.colors[
+                                emotion
+                            ]
+                            || Charts.colors.purple;
+
+                        dataset.borderColor =
+                            color;
+
+                        dataset.backgroundColor =
+                            Charts.rgba(
+                                color,
+                                0.08
+                            );
+
+                        dataset.borderWidth =
+                            2.5;
+
+                        dataset.pointRadius =
+                            0;
+
+                        dataset.pointHoverRadius =
+                            5;
+
+                        dataset.pointHitRadius =
+                            12;
+
+                        dataset.tension =
+                            0.38;
+
+                        dataset.fill =
+                            true;
+                    }
+                );
+
                 new Chart(
                     document.getElementById(
                         "trendChart"
                     ),
                     {
                         type: "line",
+
                         data: chartData,
 
                         options: {
                             responsive: true,
-                            maintainAspectRatio: false,
+
+                            maintainAspectRatio:
+                                false,
 
                             interaction: {
                                 mode: "index",
@@ -362,21 +432,25 @@
                             },
 
                             plugins: {
-                                legend: Charts.legend(
-                                    "bottom"
-                                ),
+                                legend:
+                                    Charts.legend(
+                                        "bottom"
+                                    ),
 
-                                tooltip: Charts.tooltip()
+                                tooltip:
+                                    Charts.tooltip()
                             },
 
                             scales: {
-                                x: Charts.xScale(
-                                    false
-                                ),
+                                x:
+                                    Charts.xScale(
+                                        false
+                                    ),
 
-                                y: Charts.yScale(
-                                    false
-                                )
+                                y:
+                                    Charts.yScale(
+                                        false
+                                    )
                             }
                         }
                     }
@@ -411,43 +485,60 @@
                         data: {
                             labels: hourlyLabels,
 
-                            datasets: [{
-                                label: "Total visits",
-                                data: hourlyData,
-                                backgroundColor:
-                                    Charts.rgba(
-                                        Charts.colors.cyan,
-                                        0.72
-                                    ),
-                                borderColor:
-                                    Charts.colors.cyan,
-                                borderWidth: 1,
-                                borderRadius: 7,
-                                borderSkipped: false,
-                                maxBarThickness: 32
-                            }]
+                            datasets: [
+                                {
+                                    label:
+                                        "Total visits",
+
+                                    data:
+                                        hourlyData,
+
+                                    backgroundColor:
+                                        Charts.rgba(
+                                            Charts
+                                                .colors
+                                                .cyan,
+                                            0.72
+                                        ),
+
+                                    borderColor:
+                                        Charts
+                                            .colors
+                                            .cyan,
+
+                                    borderWidth: 1,
+                                    borderRadius: 7,
+                                    borderSkipped: false,
+                                    maxBarThickness: 32
+                                }
+                            ]
                         },
 
                         options: {
                             responsive: true,
-                            maintainAspectRatio: false,
+
+                            maintainAspectRatio:
+                                false,
 
                             plugins: {
                                 legend: {
                                     display: false
                                 },
 
-                                tooltip: Charts.tooltip()
+                                tooltip:
+                                    Charts.tooltip()
                             },
 
                             scales: {
-                                x: Charts.xScale(
-                                    false
-                                ),
+                                x:
+                                    Charts.xScale(
+                                        false
+                                    ),
 
-                                y: Charts.yScale(
-                                    false
-                                )
+                                y:
+                                    Charts.yScale(
+                                        false
+                                    )
                             }
                         }
                     }
@@ -483,30 +574,43 @@
                         type: "doughnut",
 
                         data: {
-                            labels: distributionLabels,
+                            labels:
+                                distributionLabels,
 
-                            datasets: [{
-                                data: distributionData,
-                                backgroundColor:
-                                    distributionColors,
-                                borderColor: "#121824",
-                                borderWidth: 4,
-                                hoverOffset: 9,
-                                spacing: 2
-                            }]
+                            datasets: [
+                                {
+                                    data:
+                                        distributionData,
+
+                                    backgroundColor:
+                                        distributionColors,
+
+                                    borderColor:
+                                        "#121824",
+
+                                    borderWidth: 4,
+                                    hoverOffset: 9,
+                                    spacing: 2
+                                }
+                            ]
                         },
 
                         options: {
                             responsive: true,
-                            maintainAspectRatio: false,
+
+                            maintainAspectRatio:
+                                false,
+
                             cutout: "71%",
 
                             plugins: {
-                                legend: Charts.legend(
-                                    "right"
-                                ),
+                                legend:
+                                    Charts.legend(
+                                        "right"
+                                    ),
 
-                                tooltip: Charts.tooltip()
+                                tooltip:
+                                    Charts.tooltip()
                             }
                         }
                     }

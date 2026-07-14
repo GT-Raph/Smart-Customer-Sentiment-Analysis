@@ -24,7 +24,10 @@
         rel="stylesheet"
     >
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"
+        crossorigin="anonymous"
+    ></script>
 
     <style>
         :root {
@@ -60,7 +63,8 @@
             --radius-sm: 12px;
 
             --shadow:
-                0 20px 55px rgba(0, 0, 0, 0.30);
+                0 20px 55px
+                rgba(0, 0, 0, 0.30);
         }
 
         * {
@@ -152,7 +156,6 @@
             justify-content: center;
 
             flex-shrink: 0;
-
             margin-right: 14px;
 
             color: white;
@@ -168,7 +171,8 @@
                 );
 
             box-shadow:
-                0 14px 32px rgba(124, 92, 255, 0.28);
+                0 14px 32px
+                rgba(124, 92, 255, 0.28);
         }
 
         .brand-title {
@@ -221,14 +225,12 @@
             transition:
                 color 0.2s ease,
                 background 0.2s ease,
-                border-color 0.2s ease,
-                transform 0.2s ease;
+                border-color 0.2s ease;
         }
 
         .sidebar-navigation a:hover {
             color: white;
             background: var(--surface-2);
-            transform: translateX(2px);
         }
 
         .sidebar-navigation a.active {
@@ -241,7 +243,8 @@
                     rgba(53, 215, 220, 0.07)
                 );
 
-            border-color: rgba(124, 92, 255, 0.38);
+            border-color:
+                rgba(124, 92, 255, 0.38);
         }
 
         .sidebar-navigation i {
@@ -275,7 +278,7 @@
         }
 
         /*
-         * Top bar and content
+         * Top bar
          */
 
         .topbar {
@@ -293,6 +296,7 @@
             border-bottom: 1px solid var(--border);
 
             backdrop-filter: blur(24px);
+
             transition: left 0.25s ease;
         }
 
@@ -350,47 +354,27 @@
                     #5678ff
                 );
 
-            border: 1px solid rgba(255, 255, 255, 0.13);
+            border:
+                1px solid
+                rgba(255, 255, 255, 0.13);
+
             border-radius: 15px;
         }
 
-        .system-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 9px;
-
-            min-height: 40px;
-            padding: 0 15px;
-
-            color: #aef3d3;
-            font-size: 0.72rem;
-            font-weight: 700;
-
-            background: rgba(50, 214, 154, 0.08);
-            border: 1px solid rgba(50, 214, 154, 0.20);
-            border-radius: 999px;
-        }
-
-        .system-dot {
-            width: 8px;
-            height: 8px;
-
-            background: var(--green);
-            border-radius: 50%;
-
-            box-shadow:
-                0 0 0 5px rgba(50, 214, 154, 0.09);
-        }
-
         /*
-         * Bento system
+         * Bento grid
          */
 
         .bento-grid {
             position: relative;
 
             display: grid;
-            grid-template-columns: repeat(12, minmax(0, 1fr));
+            grid-template-columns:
+                repeat(
+                    12,
+                    minmax(0, 1fr)
+                );
+
             gap: 20px;
         }
 
@@ -399,7 +383,6 @@
             z-index: 1;
 
             min-width: 0;
-
             padding: 24px;
             overflow: visible;
 
@@ -411,10 +394,15 @@
                 ),
                 var(--surface);
 
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
+            border:
+                1px solid
+                var(--border);
 
-            box-shadow: var(--shadow);
+            border-radius:
+                var(--radius-lg);
+
+            box-shadow:
+                var(--shadow);
 
             transition:
                 border-color 0.2s ease,
@@ -423,23 +411,21 @@
         }
 
         /*
-         * Do not use transform here.
-         * A transform creates a new stacking context and can
-         * place neighbouring cards above an open dropdown.
+         * Do not transform cards on hover.
+         * Transforms create stacking contexts that can
+         * place neighbouring cards above open dropdowns.
          */
         .bento-card:hover {
             z-index: 2;
 
-            border-color: var(--border-strong);
+            border-color:
+                var(--border-strong);
 
             box-shadow:
-                0 24px 60px rgba(0, 0, 0, 0.36);
+                0 24px 60px
+                rgba(0, 0, 0, 0.36);
         }
 
-        /*
-         * Raise the complete card whenever one of its
-         * dropdowns is open.
-         */
         .bento-card.dropdown-open {
             z-index: 5000 !important;
         }
@@ -461,7 +447,8 @@
                     rgba(18, 24, 36, 0.96)
                 );
 
-            border-color: rgba(124, 92, 255, 0.33);
+            border-color:
+                rgba(124, 92, 255, 0.33);
         }
 
         .bento-card.green-card {
@@ -545,6 +532,10 @@
             margin-bottom: 16px;
         }
 
+        /*
+         * Metrics
+         */
+
         .metric-label {
             color: var(--text-soft);
             font-size: 0.76rem;
@@ -554,7 +545,13 @@
             margin-top: 22px;
 
             color: white;
-            font-size: clamp(2rem, 3vw, 2.75rem);
+            font-size:
+                clamp(
+                    2rem,
+                    3vw,
+                    2.75rem
+                );
+
             font-weight: 800;
             letter-spacing: -0.065em;
             line-height: 1;
@@ -585,13 +582,18 @@
             color: var(--purple-light);
             font-size: 1.17rem;
 
-            background: rgba(124, 92, 255, 0.11);
-            border: 1px solid rgba(124, 92, 255, 0.22);
+            background:
+                rgba(124, 92, 255, 0.11);
+
+            border:
+                1px solid
+                rgba(124, 92, 255, 0.22);
+
             border-radius: 17px;
         }
 
         /*
-         * Custom dark dropdown
+         * Custom dark dropdowns
          */
 
         .ui-select {
@@ -622,8 +624,13 @@
             color: white;
             text-align: left;
 
-            background: rgba(255, 255, 255, 0.035);
-            border: 1px solid var(--border);
+            background:
+                rgba(255, 255, 255, 0.035);
+
+            border:
+                1px solid
+                var(--border);
+
             border-radius: 15px;
 
             transition:
@@ -637,11 +644,15 @@
         .ui-select-toggle[aria-expanded="true"] {
             color: white;
 
-            background: rgba(255, 255, 255, 0.048);
-            border-color: rgba(124, 92, 255, 0.60);
+            background:
+                rgba(255, 255, 255, 0.048);
+
+            border-color:
+                rgba(124, 92, 255, 0.60);
 
             box-shadow:
-                0 0 0 4px rgba(124, 92, 255, 0.10);
+                0 0 0 4px
+                rgba(124, 92, 255, 0.10);
         }
 
         .ui-select-toggle::after {
@@ -672,11 +683,16 @@
             overflow-y: auto;
 
             background: #101722;
-            border: 1px solid var(--border-strong);
+
+            border:
+                1px solid
+                var(--border-strong);
+
             border-radius: 16px;
 
             box-shadow:
-                0 28px 70px rgba(0, 0, 0, 0.70);
+                0 28px 70px
+                rgba(0, 0, 0, 0.70);
         }
 
         .ui-select-option {
@@ -705,7 +721,9 @@
 
         .ui-select-option.active {
             color: white;
-            background: rgba(124, 92, 255, 0.20);
+
+            background:
+                rgba(124, 92, 255, 0.20);
         }
 
         .ui-select-option.active::after {
@@ -753,6 +771,7 @@
             flex-direction: column;
 
             padding: 24px;
+
             text-align: center;
         }
 
@@ -773,8 +792,13 @@
             color: var(--purple-light);
             font-size: 1.5rem;
 
-            background: rgba(124, 92, 255, 0.10);
-            border: 1px solid rgba(124, 92, 255, 0.20);
+            background:
+                rgba(124, 92, 255, 0.10);
+
+            border:
+                1px solid
+                rgba(124, 92, 255, 0.20);
+
             border-radius: 19px;
         }
 
@@ -793,7 +817,7 @@
         }
 
         /*
-         * General controls
+         * Forms and buttons
          */
 
         .form-control,
@@ -803,7 +827,9 @@
 
             color: white;
 
-            background: rgba(255, 255, 255, 0.035);
+            background:
+                rgba(255, 255, 255, 0.035);
+
             border-color: var(--border);
             border-radius: 15px;
         }
@@ -812,11 +838,15 @@
         .form-select:focus {
             color: white;
 
-            background: rgba(255, 255, 255, 0.05);
-            border-color: rgba(124, 92, 255, 0.60);
+            background:
+                rgba(255, 255, 255, 0.05);
+
+            border-color:
+                rgba(124, 92, 255, 0.60);
 
             box-shadow:
-                0 0 0 4px rgba(124, 92, 255, 0.10);
+                0 0 0 4px
+                rgba(124, 92, 255, 0.10);
         }
 
         .form-control::placeholder {
@@ -827,7 +857,8 @@
             color-scheme: dark;
         }
 
-        input[type="date"]::-webkit-calendar-picker-indicator {
+        input[type="date"]
+        ::-webkit-calendar-picker-indicator {
             opacity: 0.78;
             filter: invert(1);
         }
@@ -846,6 +877,7 @@
 
         .btn {
             min-height: 44px;
+
             padding-right: 17px;
             padding-left: 17px;
 
@@ -868,7 +900,8 @@
             border-color: transparent;
 
             box-shadow:
-                0 12px 27px rgba(124, 92, 255, 0.20);
+                0 12px 27px
+                rgba(124, 92, 255, 0.20);
         }
 
         .btn-primary:hover,
@@ -885,14 +918,20 @@
 
         .btn-outline-primary {
             color: var(--purple-light);
-            border-color: rgba(124, 92, 255, 0.36);
+
+            border-color:
+                rgba(124, 92, 255, 0.36);
         }
 
         .btn-outline-primary:hover,
         .btn-outline-primary:focus {
             color: white;
-            background: rgba(124, 92, 255, 0.13);
-            border-color: rgba(124, 92, 255, 0.60);
+
+            background:
+                rgba(124, 92, 255, 0.13);
+
+            border-color:
+                rgba(124, 92, 255, 0.60);
         }
 
         .btn-outline-secondary {
@@ -907,6 +946,10 @@
             border-color: var(--border-strong);
         }
 
+        /*
+         * Status and emotion chips
+         */
+
         .status-chip,
         .emotion-chip {
             display: inline-flex;
@@ -920,50 +963,91 @@
             font-weight: 750;
             text-transform: capitalize;
 
-            background: rgba(255, 255, 255, 0.025);
-            border: 1px solid var(--border);
+            background:
+                rgba(255, 255, 255, 0.025);
+
+            border:
+                1px solid
+                var(--border);
+
             border-radius: 999px;
         }
 
         .emotion-happy,
         .bg-happy {
             color: #ffe396 !important;
-            background: rgba(255, 209, 102, 0.11) !important;
-            border-color: rgba(255, 209, 102, 0.22) !important;
+
+            background:
+                rgba(255, 209, 102, 0.11)
+                !important;
+
+            border-color:
+                rgba(255, 209, 102, 0.22)
+                !important;
         }
 
         .emotion-neutral,
         .bg-neutral {
             color: #c2cad8 !important;
-            background: rgba(160, 170, 189, 0.10) !important;
-            border-color: rgba(160, 170, 189, 0.20) !important;
+
+            background:
+                rgba(160, 170, 189, 0.10)
+                !important;
+
+            border-color:
+                rgba(160, 170, 189, 0.20)
+                !important;
         }
 
         .emotion-sad,
         .bg-sad {
             color: #90c9ff !important;
-            background: rgba(91, 168, 255, 0.11) !important;
-            border-color: rgba(91, 168, 255, 0.22) !important;
+
+            background:
+                rgba(91, 168, 255, 0.11)
+                !important;
+
+            border-color:
+                rgba(91, 168, 255, 0.22)
+                !important;
         }
 
         .emotion-angry,
         .bg-angry {
             color: #ff9bb0 !important;
-            background: rgba(255, 94, 125, 0.11) !important;
-            border-color: rgba(255, 94, 125, 0.22) !important;
+
+            background:
+                rgba(255, 94, 125, 0.11)
+                !important;
+
+            border-color:
+                rgba(255, 94, 125, 0.22)
+                !important;
         }
 
         .emotion-surprise,
         .bg-surprise {
             color: #c0b3ff !important;
-            background: rgba(124, 92, 255, 0.13) !important;
-            border-color: rgba(124, 92, 255, 0.25) !important;
+
+            background:
+                rgba(124, 92, 255, 0.13)
+                !important;
+
+            border-color:
+                rgba(124, 92, 255, 0.25)
+                !important;
         }
 
         .emotion-none {
             color: var(--text-soft);
-            background: rgba(160, 170, 189, 0.07);
+
+            background:
+                rgba(160, 170, 189, 0.07);
         }
+
+        /*
+         * Utility colours
+         */
 
         .text-soft {
             color: var(--text-soft) !important;
@@ -998,7 +1082,7 @@
         }
 
         /*
-         * Table, modal and Bootstrap dropdown
+         * Tables and Bootstrap components
          */
 
         .table-responsive {
@@ -1009,7 +1093,10 @@
             --bs-table-bg: transparent;
             --bs-table-color: var(--text-soft);
             --bs-table-border-color: var(--border);
-            --bs-table-hover-bg: rgba(255, 255, 255, 0.022);
+
+            --bs-table-hover-bg:
+                rgba(255, 255, 255, 0.022);
+
             --bs-table-hover-color: white;
 
             margin-bottom: 0;
@@ -1025,12 +1112,14 @@
             letter-spacing: 0.09em;
             text-transform: uppercase;
 
-            background: rgba(255, 255, 255, 0.018);
+            background:
+                rgba(255, 255, 255, 0.018);
         }
 
         .table td {
             padding-top: 16px;
             padding-bottom: 16px;
+
             vertical-align: middle;
         }
 
@@ -1039,7 +1128,11 @@
             color: white;
 
             background: #101722;
-            border: 1px solid var(--border-strong);
+
+            border:
+                1px solid
+                var(--border-strong);
+
             border-radius: 17px;
 
             box-shadow: var(--shadow);
@@ -1050,24 +1143,63 @@
             border-radius: 10px;
         }
 
-        .dropdown-item:hover {
+        .dropdown-item:hover,
+        .dropdown-item:focus {
             color: white;
             background: var(--surface-hover);
         }
 
         .alert {
-            color: var(--text-soft);
-
-            background: var(--surface);
-            border: 1px solid var(--border);
             border-radius: 16px;
+        }
+
+        .alert-info {
+            color: #bdeff1;
+
+            background:
+                rgba(53, 215, 220, 0.08);
+
+            border-color:
+                rgba(53, 215, 220, 0.20);
+        }
+
+        .alert-success {
+            color: #aef3d3;
+
+            background:
+                rgba(50, 214, 154, 0.08);
+
+            border-color:
+                rgba(50, 214, 154, 0.20);
+        }
+
+        .alert-warning {
+            color: #ffe49c;
+
+            background:
+                rgba(255, 209, 102, 0.08);
+
+            border-color:
+                rgba(255, 209, 102, 0.20);
+        }
+
+        .alert-danger {
+            color: #ffacba;
+
+            background:
+                rgba(255, 94, 125, 0.08);
+
+            border-color:
+                rgba(255, 94, 125, 0.20);
         }
 
         .progress {
             height: 8px;
             overflow: hidden;
 
-            background: rgba(255, 255, 255, 0.052);
+            background:
+                rgba(255, 255, 255, 0.052);
+
             border-radius: 999px;
         }
 
@@ -1078,7 +1210,9 @@
         code {
             color: var(--cyan);
 
-            background: rgba(53, 215, 220, 0.07);
+            background:
+                rgba(53, 215, 220, 0.07);
+
             border-radius: 7px;
         }
 
@@ -1095,6 +1229,10 @@
             font-size: 2.2rem;
         }
 
+        /*
+         * User display preferences
+         */
+
         .compact-mode .bento-grid {
             gap: 14px;
         }
@@ -1107,13 +1245,26 @@
         .reduce-motion *,
         .reduce-motion *::before,
         .reduce-motion *::after {
-            scroll-behavior: auto !important;
-            animation-duration: 0.001ms !important;
-            animation-iteration-count: 1 !important;
-            transition-duration: 0.001ms !important;
+            scroll-behavior:
+                auto !important;
+
+            animation-duration:
+                0.001ms !important;
+
+            animation-iteration-count:
+                1 !important;
+
+            transition-duration:
+                0.001ms !important;
         }
 
-        @media (max-width: 1199.98px) {
+        /*
+         * Responsive layout
+         */
+
+        @media (
+            max-width: 1199.98px
+        ) {
             .span-9,
             .span-8,
             .span-7 {
@@ -1129,13 +1280,17 @@
             }
         }
 
-        @media (max-width: 991.98px) {
+        @media (
+            max-width: 991.98px
+        ) {
             .sidebar {
-                transform: translateX(-100%);
+                transform:
+                    translateX(-100%);
             }
 
             .sidebar.show {
-                transform: translateX(0);
+                transform:
+                    translateX(0);
             }
 
             .topbar {
@@ -1153,7 +1308,9 @@
 
                 display: none;
 
-                background: rgba(0, 0, 0, 0.70);
+                background:
+                    rgba(0, 0, 0, 0.70);
+
                 backdrop-filter: blur(4px);
             }
 
@@ -1162,7 +1319,9 @@
             }
         }
 
-        @media (max-width: 767.98px) {
+        @media (
+            max-width: 767.98px
+        ) {
             .page-container {
                 padding: 16px;
             }
@@ -1192,10 +1351,6 @@
                 border-radius: 19px;
             }
 
-            .system-pill {
-                display: none;
-            }
-
             .chart-wrapper,
             .chart-wrapper.large {
                 min-height: 290px;
@@ -1207,7 +1362,7 @@
 </head>
 
 <body
-class="
+    class="
         {% if ui_preferences.compact_mode %}
             compact-mode
         {% endif %}
@@ -1376,12 +1531,7 @@ class="
                 </div>
             </div>
 
-            <div class="d-flex align-items-center gap-3">
-                <div class="system-pill">
-                    <span class="system-dot"></span>
-                    System online
-                </div>
-
+            <div class="d-flex align-items-center">
                 <div class="dropdown">
                     <button
                         class="btn btn-outline-secondary border-0 dropdown-toggle d-flex align-items-center"
@@ -1433,7 +1583,13 @@ class="
             {% if messages %}
                 {% for message in messages %}
                     <div
-                        class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show"
+                        class="
+                            alert
+                            alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags|default:'info' }}{% endif %}
+                            alert-dismissible
+                            fade
+                            show
+                        "
                         role="alert"
                     >
                         {{ message }}
@@ -1442,6 +1598,7 @@ class="
                             type="button"
                             class="btn-close"
                             data-bs-dismiss="alert"
+                            aria-label="Close"
                         ></button>
                     </div>
                 {% endfor %}
@@ -1457,27 +1614,34 @@ class="
 
     <script>
         /*
-         * Chart.js global dark theme
+         * Global Chart.js theme
          */
 
-        Chart.defaults.color = "#a0aabd";
-        Chart.defaults.borderColor =
-            "rgba(255, 255, 255, 0.06)";
+        if (window.Chart) {
+            Chart.defaults.color =
+                "#a0aabd";
 
-        Chart.defaults.font.family =
-            "Inter, ui-sans-serif, system-ui, sans-serif";
+            Chart.defaults.borderColor =
+                "rgba(255, 255, 255, 0.06)";
 
-        Chart.defaults.font.size = 11;
-        Chart.defaults.animation.duration = 550;
+            Chart.defaults.font.family =
+                "Inter, ui-sans-serif, system-ui, sans-serif";
 
-        Chart.defaults.plugins.legend.labels.usePointStyle =
-            true;
+            Chart.defaults.font.size =
+                11;
 
-        Chart.defaults.plugins.legend.labels.pointStyle =
-            "circle";
+            Chart.defaults.animation.duration =
+                550;
 
-        Chart.defaults.plugins.legend.labels.padding =
-            18;
+            Chart.defaults.plugins.legend.labels.usePointStyle =
+                true;
+
+            Chart.defaults.plugins.legend.labels.pointStyle =
+                "circle";
+
+            Chart.defaults.plugins.legend.labels.padding =
+                18;
+        }
 
         window.SentimentCharts = {
             colors: {
@@ -1496,7 +1660,10 @@ class="
                 opacity
             ) {
                 const cleanHex =
-                    hex.replace("#", "");
+                    hex.replace(
+                        "#",
+                        ""
+                    );
 
                 const number =
                     parseInt(
@@ -1505,13 +1672,22 @@ class="
                     );
 
                 const red =
-                    (number >> 16) & 255;
+                    (
+                        number
+                        >> 16
+                    )
+                    & 255;
 
                 const green =
-                    (number >> 8) & 255;
+                    (
+                        number
+                        >> 8
+                    )
+                    & 255;
 
                 const blue =
-                    number & 255;
+                    number
+                    & 255;
 
                 return (
                     "rgba("
@@ -1529,13 +1705,24 @@ class="
             hasData: function (
                 values
             ) {
-                if (!Array.isArray(values)) {
+                if (
+                    !Array.isArray(
+                        values
+                    )
+                ) {
                     return false;
                 }
 
                 return values.some(
-                    function (value) {
-                        return Number(value) !== 0;
+                    function (
+                        value
+                    ) {
+                        return (
+                            Number(
+                                value
+                            )
+                            !== 0
+                        );
                     }
                 );
             },
@@ -1543,21 +1730,31 @@ class="
             datasetsHaveData: function (
                 datasets
             ) {
-                if (!Array.isArray(datasets)) {
+                if (
+                    !Array.isArray(
+                        datasets
+                    )
+                ) {
                     return false;
                 }
 
                 return datasets.some(
-                    function (dataset) {
+                    function (
+                        dataset
+                    ) {
                         return (
                             dataset
                             && Array.isArray(
                                 dataset.data
                             )
                             && dataset.data.some(
-                                function (value) {
+                                function (
+                                    value
+                                ) {
                                     return (
-                                        Number(value)
+                                        Number(
+                                            value
+                                        )
                                         !== 0
                                     );
                                 }
@@ -1582,7 +1779,10 @@ class="
                         emptyStateId
                     );
 
-                if (!canvas || !emptyState) {
+                if (
+                    !canvas
+                    || !emptyState
+                ) {
                     return;
                 }
 
@@ -1602,7 +1802,8 @@ class="
             ) {
                 return {
                     position:
-                        position || "bottom",
+                        position
+                        || "bottom",
 
                     labels: {
                         color: "#a0aabd",
@@ -1617,11 +1818,18 @@ class="
 
             tooltip: function () {
                 return {
-                    backgroundColor: "#0c121c",
-                    titleColor: "#ffffff",
-                    bodyColor: "#a0aabd",
+                    backgroundColor:
+                        "#0c121c",
+
+                    titleColor:
+                        "#ffffff",
+
+                    bodyColor:
+                        "#a0aabd",
+
                     borderColor:
                         "rgba(255,255,255,0.10)",
+
                     borderWidth: 1,
                     padding: 12,
                     cornerRadius: 12,
@@ -1635,7 +1843,9 @@ class="
             ) {
                 return {
                     stacked:
-                        Boolean(stacked),
+                        Boolean(
+                            stacked
+                        ),
 
                     grid: {
                         display: false
@@ -1659,7 +1869,9 @@ class="
             ) {
                 const scale = {
                     stacked:
-                        Boolean(stacked),
+                        Boolean(
+                            stacked
+                        ),
 
                     beginAtZero: true,
 
@@ -1682,7 +1894,8 @@ class="
                 };
 
                 if (
-                    maxValue !== undefined
+                    maxValue
+                    !== undefined
                 ) {
                     scale.max =
                         maxValue;
@@ -1693,7 +1906,7 @@ class="
         };
 
         /*
-         * Sidebar
+         * Mobile sidebar
          */
 
         const sidebar =
@@ -1729,13 +1942,17 @@ class="
             sidebarToggle.addEventListener(
                 "click",
                 function () {
-                    sidebar.classList.toggle(
-                        "show"
-                    );
+                    if (sidebar) {
+                        sidebar.classList.toggle(
+                            "show"
+                        );
+                    }
 
-                    sidebarOverlay.classList.toggle(
-                        "show"
-                    );
+                    if (sidebarOverlay) {
+                        sidebarOverlay.classList.toggle(
+                            "show"
+                        );
+                    }
                 }
             );
         }
@@ -1748,13 +1965,15 @@ class="
         }
 
         /*
-         * Raise the complete bento card while one of
-         * its dropdowns is open.
+         * Raise the complete bento card while
+         * a dropdown inside it is open.
          */
 
         document.addEventListener(
             "show.bs.dropdown",
-            function (event) {
+            function (
+                event
+            ) {
                 const dropdownCard =
                     event.target.closest(
                         ".bento-card"
@@ -1770,7 +1989,9 @@ class="
 
         document.addEventListener(
             "hidden.bs.dropdown",
-            function (event) {
+            function (
+                event
+            ) {
                 const dropdownCard =
                     event.target.closest(
                         ".bento-card"
@@ -1785,7 +2006,7 @@ class="
         );
 
         /*
-         * Custom dark selects
+         * Custom select controls
          */
 
         document.addEventListener(
@@ -1883,15 +2104,16 @@ class="
 
                                             if (
                                                 toggleButton
+                                                && window.bootstrap
                                             ) {
-                                                const dropdownInstance =
+                                                const dropdown =
                                                     bootstrap
                                                         .Dropdown
                                                         .getOrCreateInstance(
                                                             toggleButton
                                                         );
 
-                                                dropdownInstance.hide();
+                                                dropdown.hide();
                                             }
                                         }
                                     );

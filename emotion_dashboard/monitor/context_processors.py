@@ -7,11 +7,12 @@ def user_preferences(request):
             "ui_preferences": None
         }
 
-    preferences, _ = (
+    preferences = (
         UserPreference.objects
-        .get_or_create(
+        .filter(
             user=request.user
         )
+        .first()
     )
 
     return {

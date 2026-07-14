@@ -32,7 +32,7 @@
 
         <div class="d-flex gap-2">
             <a
-                href="?export=true{% if selected_emotion %}&emotion={{ selected_emotion }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if face_id %}&face_id={{ face_id }}{% endif %}"
+                href="?export=true{% if selected_emotion %}&emotion={{ selected_emotion|urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from|urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to|urlencode }}{% endif %}{% if face_id %}&face_id={{ face_id|urlencode }}{% endif %}"
                 class="btn btn-outline-primary flex-grow-1"
             >
                 <i class="bi bi-download me-1"></i>
@@ -40,6 +40,7 @@
             </a>
 
             <button
+                type="button"
                 class="btn btn-primary flex-grow-1"
                 data-bs-toggle="modal"
                 data-bs-target="#filtersModal"
@@ -152,13 +153,14 @@
 
         {% if visits.has_other_pages %}
             <div class="p-3 border-top border-secondary-subtle">
-                <nav>
+                <nav aria-label="Visit history pages">
                     <ul class="pagination pagination-sm mb-0 justify-content-center">
                         {% if visits.has_previous %}
                             <li class="page-item">
                                 <a
                                     class="page-link"
-                                    href="?page={{ visits.previous_page_number }}{% if selected_emotion %}&emotion={{ selected_emotion }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if face_id %}&face_id={{ face_id }}{% endif %}"
+                                    href="?page={{ visits.previous_page_number }}{% if selected_emotion %}&emotion={{ selected_emotion|urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from|urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to|urlencode }}{% endif %}{% if face_id %}&face_id={{ face_id|urlencode }}{% endif %}"
+                                    aria-label="Previous page"
                                 >
                                     &laquo;
                                 </a>
@@ -169,7 +171,7 @@
                             <li class="page-item {% if visits.number == i %}active{% endif %}">
                                 <a
                                     class="page-link"
-                                    href="?page={{ i }}{% if selected_emotion %}&emotion={{ selected_emotion }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if face_id %}&face_id={{ face_id }}{% endif %}"
+                                    href="?page={{ i }}{% if selected_emotion %}&emotion={{ selected_emotion|urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from|urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to|urlencode }}{% endif %}{% if face_id %}&face_id={{ face_id|urlencode }}{% endif %}"
                                 >
                                     {{ i }}
                                 </a>
@@ -180,7 +182,8 @@
                             <li class="page-item">
                                 <a
                                     class="page-link"
-                                    href="?page={{ visits.next_page_number }}{% if selected_emotion %}&emotion={{ selected_emotion }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if face_id %}&face_id={{ face_id }}{% endif %}"
+                                    href="?page={{ visits.next_page_number }}{% if selected_emotion %}&emotion={{ selected_emotion|urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from|urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to|urlencode }}{% endif %}{% if face_id %}&face_id={{ face_id|urlencode }}{% endif %}"
+                                    aria-label="Next page"
                                 >
                                     &raquo;
                                 </a>
@@ -215,17 +218,22 @@
                         type="button"
                         class="btn-close"
                         data-bs-dismiss="modal"
+                        aria-label="Close filters"
                     ></button>
                 </div>
 
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label">
+                        <label
+                            class="form-label"
+                            for="visitFaceId"
+                        >
                             Face ID
                         </label>
 
                         <input
                             type="text"
+                            id="visitFaceId"
                             name="face_id"
                             class="form-control"
                             value="{{ face_id|default:'' }}"
@@ -233,11 +241,15 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label">
+                        <label
+                            class="form-label"
+                            for="visitEmotion"
+                        >
                             Emotion
                         </label>
 
                         <select
+                            id="visitEmotion"
                             name="emotion"
                             class="form-select"
                         >
@@ -245,37 +257,60 @@
                                 All emotions
                             </option>
 
-                            <option value="happy" {% if selected_emotion == 'happy' %}selected{% endif %}>
+                            <option
+                                value="happy"
+                                {% if selected_emotion == 'happy' %}selected{% endif %}
+                            >
                                 Happy
                             </option>
 
-                            <option value="neutral" {% if selected_emotion == 'neutral' %}selected{% endif %}>
+                            <option
+                                value="neutral"
+                                {% if selected_emotion == 'neutral' %}selected{% endif %}
+                            >
                                 Neutral
                             </option>
 
-                            <option value="sad" {% if selected_emotion == 'sad' %}selected{% endif %}>
+                            <option
+                                value="sad"
+                                {% if selected_emotion == 'sad' %}selected{% endif %}
+                            >
                                 Sad
                             </option>
 
-                            <option value="angry" {% if selected_emotion == 'angry' %}selected{% endif %}>
+                            <option
+                                value="angry"
+                                {% if selected_emotion == 'angry' %}selected{% endif %}
+                            >
                                 Angry
                             </option>
 
-                            <option value="surprise" {% if selected_emotion == 'surprise' %}selected{% endif %}>
+                            <option
+                                value="surprise"
+                                {% if selected_emotion == 'surprise' %}selected{% endif %}
+                            >
                                 Surprise
                             </option>
                         </select>
                     </div>
 
                     <div>
-                        <label class="form-label">
+                        <div class="form-label">
                             Date range
-                        </label>
+                        </div>
 
                         <div class="row g-2">
                             <div class="col-6">
+                                <label
+                                    class="visually-hidden"
+                                    for="visitDateFrom"
+                                >
+                                    Starting date
+                                </label>
+
                                 <input
                                     type="date"
+                                    id="visitDateFrom"
                                     name="date_from"
                                     class="form-control"
                                     value="{{ date_from|default:'' }}"
@@ -283,8 +318,16 @@
                             </div>
 
                             <div class="col-6">
+                                <label
+                                    class="visually-hidden"
+                                    for="visitDateTo"
+                                >
+                                    Ending date
+                                </label>
+
                                 <input
                                     type="date"
+                                    id="visitDateTo"
                                     name="date_to"
                                     class="form-control"
                                     value="{{ date_to|default:'' }}"
