@@ -1,122 +1,205 @@
-# Facial Emotion Detection and Logging System
+# Smart Customer Sentiment Analysis System
 
-This project monitors a folder for facial images, detects emotions, identifies whether a face is new or known, and logs the emotion along with face data into a MySQL database. It uses DeepFace for facial recognition and emotion analysis.
+A multi-tenant facial emotion analysis and customer sentiment monitoring platform designed for banks and branch-based organisations.
 
-## Table of Contents
-- [Features](#features)
-- [Requirements](#requirements)
-  - [System](#system)
-  - [Python](#python)
-  - [Machine Learning / Libraries](#machine-learning--libraries)
-  - [Database](#database)
-  - [Optional: GPU](#optional-gpu)
-- [Quickstart](#quickstart)
-- [Architecture Summary](#architecture-summary)
-- [Database Schema](#database-schema)
-- [Docs](#docs)
-- [License](#license)
+The system automatically captures customer faces from configured workstation cameras, analyses facial emotion using DeepFace, identifies returning visitors using facial embeddings, and stores sentiment data for reporting and analytics.
 
-## 🚀 Features
+Each workstation communicates with a central FastAPI service. The API authenticates the bank, automatically identifies the branch from the workstation's computer name, performs face recognition and emotion analysis, and stores the resulting records in PostgreSQL.
 
-- Automatic detection of faces from a monitored folder
-- Facial emotion recognition (e.g., happy, sad, angry, etc.)
-- Embedding-based face identification and unique ID generation
-- MySQL database logging of users and their emotions
-- Self-healing identification even if known image folder is deleted
+A Django-based dashboard provides authorised users with bank-level and branch-level sentiment analytics, visitor statistics, reports, system settings, and operational monitoring.
 
-## 🛠 Requirements
+## Core Features
 
-### System
-- Supported OS: Windows 10+, macOS, or Linux.
-- Disk: sufficient space for images and model caches.
-- Recommended: 8+ GB RAM for CPU inference; more recommended for training/large workloads.
+* Automatic customer face capture using a workstation webcam
+* Face quality and stability checks before capture
+* Customer-only configurable camera region of interest
+* Facial emotion detection using DeepFace
+* ArcFace facial embeddings for visitor recognition
+* Detection of new and returning visitors
+* Unique ULID-based face identification
+* Multi-bank and multi-branch architecture
+* Automatic branch identification using workstation PC-name prefixes
+* Bank API-key authentication
+* PostgreSQL data persistence
+* Django analytics and reporting dashboard
+* Bank and branch access control
+* Emotion confidence and full emotion-vector storage
+* Offline capture queue with automatic retry
+* Configurable image and data-retention settings
+* Dashboard preferences and automatic refresh options
 
-### Python
-- Python 3.10.11 recommended.
-- Use a virtual environment (venv, pipenv, or conda).
+## System Architecture
 
-### Machine Learning / Libraries
-- Primary ML framework: DeepFace (wraps TensorFlow or PyTorch backends).
-- Core packages (defined in requirements.txt):
-  - deepface
-  - tensorflow (or torch if configured)
-  - opencv-python
-  - numpy, pandas
-  - scikit-learn (optional for downstream processing)
-- Install packages with:
-  ```bash
-  pip install -r requirements.txt
-  ```
+```text
+Customer
+   │
+   ▼
+Workstation Camera
+   │
+   ▼
+desktop_capture.py
+   │
+   │  HTTPS / HTTP
+   │  X-Bank-Code
+   │  X-API-Key
+   │  PC Name
+   ▼
+FastAPI Face Analysis Service
+   │
+   ├── Bank Authentication
+   ├── Automatic Branch Detection
+   ├── Face Detection
+   ├── ArcFace Embedding Generation
+   ├── Visitor Matching
+   └── Emotion Analysis
+   │
+   ▼
+PostgreSQL Database
+   │
+   ├── Banks
+   ├── Branches
+   ├── Visitors
+   └── Sentiment Snapshots
+   │
+   ▼
+Django Dashboard
+   ├── Dashboard
+   ├── Branch Analytics
+   ├── Emotion Analytics
+   ├── Reports
+   └── Settings
+```
 
-### Database
-- MySQL Server (e.g., standalone MySQL, MariaDB, or XAMPP MySQL).
-- Minimum recommended version: MySQL 5.7+ or compatible MariaDB.
-- Python connector: mysql-connector-python or PyMySQL (ensure it's listed in requirements.txt).
-- Example: configure database connection settings in the project config before first run.
+## Main Components
 
-### Optional: GPU (for faster model inference)
-- If you plan to use a GPU for inference:
-  - NVIDIA GPU with CUDA support.
-  - Compatible CUDA toolkit and cuDNN versions for your TensorFlow/PyTorch build.
-  - Install GPU-enabled TensorFlow or torch wheels matching your CUDA version.
-- Without GPU, CPU-only inference is supported but slower.
+### Desktop Capture Client
 
-## 🚀 Quickstart
-1. Clone or download this repository.
-2. Create and activate a Python virtual environment:
-   - `python -m venv .venv`
-   - `source .venv/bin/activate`  (macOS/Linux) or `.venv\Scripts\activate` (Windows)
-3. Install dependencies:
-   - `pip install -r requirements.txt`
-4. Configure database connection and monitored folders (see docs/ for examples).
-5. Start the monitoring service/script.
+`desktop_capture.py` runs on the customer-facing workstation.
 
-## Architecture Summary
-- Input: images dropped into a monitored folder.
-- Processing: DeepFace extracts face embeddings and detects emotions.
-- Identification: embeddings compared to known-face store; new unique IDs created for unseen faces.
-- Storage: face embeddings and emotion logs persisted to MySQL for analytics and reporting.
-- Resilience: system can re-generate known-face store from persisted embeddings in DB.
+It uses OpenCV to monitor the configured camera, detect faces within a customer region of interest, perform quality checks, and automatically select a suitable image for analysis.
 
-## SQL Database Schema
--- Create the database
-CREATE DATABASE IF NOT EXISTS emotion_detection;
+Quality checks include:
 
--- Use the database
-USE emotion_detection;
+* face size
+* face stability
+* image sharpness
+* brightness
+* eye detection
+* face area
+* duplicate-capture prevention
 
--- Create users table to store unique faces and embeddings
-CREATE TABLE IF NOT EXISTS unique_face_id (
-    face_id VARCHAR(255) PRIMARY KEY,
-    embedding LONGTEXT NOT NULL
-);
+Captured images are submitted to the central API together with the workstation's computer name.
 
--- Create emotions table to log emotion analysis results
-CREATE TABLE IF NOT EXISTS emotions (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    face_id VARCHAR(255),
-    detected_emotion VARCHAR(100),
-    confidence FLOAT,
-    timestamp DATETIME,
-    FOREIGN KEY (face_id) REFERENCES users(face_id)
-);
+If the API cannot be reached, captures can be stored in the local offline queue and retried later.
 
+### FastAPI Analysis Service
 
-## Docs
-- Detailed configuration, deployment, and troubleshooting steps are available in the docs/ directory. Refer to docs/ for DB configuration examples, environment variables, and advanced tuning (GPU setup, model selection, privacy considerations).
+The FastAPI service is located in:
 
-## 🚫 Git Ignore (notes)
-- The following folders are typically ignored and not tracked by git:
-  - emotion_detection_system/captured_faces/
-  - emotion_detection_system/known_faces/
-  - emotion_detection_system/Process/
+```text
+api_server/
+```
 
-## Installation (quick)
-1. Clone or download this repo.
-2. Install required Python libraries:
-   ```bash
-   pip install -r requirements.txt
-   ```
+Its primary face-processing endpoint is:
 
-## License
-- See LICENSE or project root for license details.
+```text
+POST /upload-face
+```
+
+The API:
+
+1. Authenticates the bank.
+2. Reads the workstation PC name.
+3. Determines the appropriate branch using its configured PC-name prefix.
+4. Detects faces in the uploaded image.
+5. Generates an ArcFace embedding.
+6. Compares the embedding with known visitors belonging to the same bank.
+7. Assigns an existing face ID or generates a new ULID.
+8. Performs facial emotion analysis.
+9. Stores the snapshot and visitor information in PostgreSQL.
+
+### Django Analytics Dashboard
+
+The dashboard is located in:
+
+```text
+emotion_dashboard/
+```
+
+It provides authenticated access to:
+
+* overall sentiment dashboard
+* branch overview
+* individual branch analytics
+* emotion analytics
+* reports
+* account and system settings
+* bank and branch administration
+
+Access to data is restricted according to the user's assigned bank and branch.
+
+## Technology Stack
+
+* Python
+* OpenCV
+* DeepFace
+* ArcFace
+* TensorFlow
+* FastAPI
+* Django
+* PostgreSQL
+* psycopg2
+* NumPy
+* Requests
+* ULID
+
+## API Endpoints
+
+The current API exposes:
+
+```text
+GET  /
+GET  /health
+POST /upload-face
+```
+
+### Upload Authentication
+
+`POST /upload-face` requires the following headers:
+
+```text
+X-Bank-Code: <bank-code>
+X-API-Key: <bank-api-key>
+```
+
+The multipart request contains:
+
+```text
+file      Image file
+pc_name   Workstation computer name
+```
+
+Accepted image formats include JPEG, PNG, and WebP.
+
+## Database
+
+PostgreSQL is the primary database used by the application.
+
+The core application models include:
+
+```text
+tenant_bank
+tenant_branch
+analytics_visitor
+analytics_snapshot
+tenant_bank_settings
+monitor_user_preference
+```
+
+Django migrations should be used to create and update the database schema rather than manually creating the old MySQL tables shown in previous versions of this README.
+
+For local dashboard development, SQLite can optionally be enabled using:
+
+```text
+DB_ENGINE=sqlite
+```
