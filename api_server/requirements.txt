@@ -7,5 +7,5 @@ ulid-py==1.1.0
 psycopg2-binary==2.9.11
 python-dotenv>=1.0,<2
 python-multipart>=0.0.20,<1
-redis>=5,<7
+redis>=8.1.0,<9
 rq>=2,<3
