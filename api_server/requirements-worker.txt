@@ -1,4 +1,4 @@
-opencv-python-headless==4.11.0.86
+opencv-python-headless==5.0.0.93
 numpy==1.24.3
 Pillow>=10,<13
 ulid-py==1.1.0
