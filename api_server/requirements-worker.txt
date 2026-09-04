@@ -8,4 +8,4 @@ redis>=5,<7
 rq>=2,<3
 scipy>=1.10,<2
 deepface==0.0.98
-tensorflow==2.13.0
+tensorflow==2.21.0
