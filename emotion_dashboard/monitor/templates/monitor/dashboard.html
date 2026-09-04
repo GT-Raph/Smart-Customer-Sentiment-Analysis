@@ -1,0 +1,407 @@
+{% extends "monitor/base.html" %}
+{% load static %}
+
+{% block page_title %}Dashboard Overview{% endblock %}
+
+{% block content %}
+<style>
+    .badge-emotion {
+        font-size: 0.875em;
+        min-width: 75px;
+        text-align: center;
+        color: white;
+    }
+    .badge-happy { background-color: #FFD166; color: #000; }
+    .badge-neutral { background-color: #8A8A8A; }
+    .badge-sad { background-color: #118AB2; }
+    .badge-angry { background-color: #EF476F; }
+    .badge-surprise { background-color: #8338EC; }
+    
+    .summary-card {
+        transition: transform 0.2s;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    .summary-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    
+    .emotion-icon {
+        font-size: 1.5rem;
+    }
+    
+    /* Emotion color classes for text */
+    .text-happy { color: #FFD166; }
+    .text-sad { color: #118AB2; }
+    .text-angry { color: #EF476F; }
+    .text-neutral { color: #8A8A8A; }
+    .text-surprise { color: #8338EC; }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col">
+            <h6 class="text-muted"><i class="fas fa-building me-2"></i>Viewing data for: <strong>{{ branch_name }}</strong></h6>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <!-- Total Visitors Card -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card summary-card h-100 border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-2"><i class="fas fa-users me-1"></i>Total Visitors</h6>
+                            <h3 class="mb-0">{{ total_visitors }}</h3>
+                        </div>
+                        <div class="bg-primary bg-opacity-10 p-3 rounded">
+                            <i class="fas fa-user-friends text-primary emotion-icon"></i>
+                        </div>
+                    </div>
+                    <p class="text-muted mb-0 mt-2">
+                        <i class="fas fa-arrow-up text-success me-1"></i>
+                        <span class="text-success fw-bold">+{{ visitor_growth }}%</span> from last week
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Top Emotion Card -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card summary-card h-100 border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-2"><i class="fas fa-star me-1"></i>Top Emotion Today</h6>
+                            <h3 class="mb-0">
+                                <span class="badge badge-{{ top_emotion.emotion }} badge-emotion">
+                                    {{ top_emotion.emotion|title }}
+                                </span>
+                            </h3>
+                        </div>
+                        <div class="bg-{{ top_emotion.emotion }} bg-opacity-10 p-3 rounded">
+                            {% if top_emotion.emotion == 'happy' %}
+                                <i class="fas fa-smile text-happy emotion-icon"></i>
+                            {% elif top_emotion.emotion == 'sad' %}
+                                <i class="fas fa-sad-tear text-sad emotion-icon"></i>
+                            {% elif top_emotion.emotion == 'angry' %}
+                                <i class="fas fa-angry text-angry emotion-icon"></i>
+                            {% elif top_emotion.emotion == 'surprise' %}
+                                <i class="fas fa-surprise text-surprise emotion-icon"></i>
+                            {% else %}
+                                <i class="fas fa-meh text-neutral emotion-icon"></i>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <p class="text-muted mb-0 mt-2">
+                        <i class="fas fa-chart-pie me-1"></i>{{ top_emotion.percentage }}% of all detections
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Negative Emotions Card -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card summary-card h-100 border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-2"><i class="fas fa-frown me-1"></i>Negative Emotions</h6>
+                            <h3 class="mb-0">{{ negative_percentage }}%</h3>
+                        </div>
+                        <div class="bg-warning bg-opacity-10 p-3 rounded">
+                            <i class="fas fa-frown-open text-warning emotion-icon"></i>
+                        </div>
+                    </div>
+                    <p class="text-muted mb-0 mt-2">
+                        <i class="fas fa-arrow-up text-danger me-1"></i>
+                        <span class="text-danger fw-bold">+{{ negative_growth }}%</span> from yesterday
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Activity Level Card -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card summary-card h-100 border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-2"><i class="fas fa-chart-line me-1"></i>Branch Activity</h6>
+                            <h3 class="mb-0">{{ activity_level }}</h3>
+                        </div>
+                        <div class="bg-info bg-opacity-10 p-3 rounded">
+                            <i class="fas fa-bolt text-info emotion-icon"></i>
+                        </div>
+                    </div>
+                    <p class="text-muted mb-0 mt-2">
+                        <i class="fas fa-clock me-1"></i>Peak time: {{ peak_time }}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Section -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Emotion Trend (Last {{ trend_days }} Days)</h6>
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" 
+                                data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-calendar me-1"></i>
+                            {% if time_range == 'day' %}Today
+                            {% elif time_range == 'week' %}This Week
+                            {% elif time_range == 'month' %}This Month
+                            {% else %}Last {{ trend_days }} Days{% endif %}
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="?range=day"><i class="fas fa-calendar-day me-2"></i>Today</a></li>
+                            <li><a class="dropdown-item" href="?range=week"><i class="fas fa-calendar-week me-2"></i>This Week</a></li>
+                            <li><a class="dropdown-item" href="?range=month"><i class="fas fa-calendar-alt me-2"></i>This Month</a></li>
+                            <li><a class="dropdown-item" href="?range=14days"><i class="fas fa-history me-2"></i>Last 14 Days</a></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <canvas id="trendChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Emotion Distribution</h6>
+                </div>
+                <div class="card-body">
+                    {% if total_detections > 0 %}
+                    <canvas id="emotionChart" height="300"></canvas>
+                    {% else %}
+                    <div class="alert alert-warning text-center py-4">
+                        <i class="fas fa-chart-pie fa-2x mb-3 text-muted"></i>
+                        <p class="mb-0">No emotion data available</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="fas fa-clock me-2"></i>Hourly Emotion Activity</h6>
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" 
+                                data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-calendar me-1"></i>
+                            {% if hourly_range == 'yesterday' %}Yesterday
+                            {% else %}Today{% endif %}
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="?hourly=today"><i class="fas fa-sun me-2"></i>Today</a></li>
+                            <li><a class="dropdown-item" href="?hourly=yesterday"><i class="fas fa-moon me-2"></i>Yesterday</a></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if total_detections > 0 %}
+                    <canvas id="activityChart" height="250"></canvas>
+                    {% else %}
+                    <div class="alert alert-warning text-center py-4">
+                        <i class="fas fa-clock fa-2x mb-3 text-muted"></i>
+                        <p class="mb-0">No hourly data available</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block chart_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Emotion colors
+    const emotionColors = {
+        'happy': '#FFD166',
+        'sad': '#118AB2', 
+        'angry': '#EF476F',
+        'neutral': '#8A8A8A',
+        'surprise': '#8338EC',
+        'none': '#6C757D'
+    };
+
+    // Emotion Distribution Chart
+    {% if total_detections > 0 %}
+    const emotionCtx = document.getElementById('emotionChart').getContext('2d');
+    new Chart(emotionCtx, {
+        type: 'doughnut',
+        data: {
+            labels: {{ emotion_labels|safe }},
+            datasets: [{
+                data: {{ emotion_data|safe }},
+                backgroundColor: {{ emotion_colors|safe }},
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { 
+                    position: 'right',
+                    labels: {
+                        padding: 20,
+                        usePointStyle: true,
+                        pointStyle: 'circle'
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => {
+                            const total = {{ total_detections }};
+                            const value = context.raw || 0;
+                            const percentage = ((value / total) * 100).toFixed(1);
+                            return `${context.label}: ${value} (${percentage}%)`;
+                        }
+                    }
+                }
+            },
+            cutout: '60%'
+        }
+    });
+    {% endif %}
+
+    // Emotion Trend Chart
+    const trendCtx = document.getElementById('trendChart').getContext('2d');
+    new Chart(trendCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ trend_labels|safe }},
+            datasets: {{ trend_datasets|safe }}
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { 
+                x: { 
+                    stacked: true,
+                    title: { display: true, text: 'Date' },
+                    grid: { display: false }
+                },
+                y: { 
+                    stacked: true,
+                    title: { display: true, text: 'Number of Detections' },
+                    beginAtZero: true,
+                    grid: { color: 'rgba(0, 0, 0, 0.05)' }
+                }
+            },
+            plugins: {
+                legend: { 
+                    position: 'top',
+                    labels: { usePointStyle: true }
+                },
+                tooltip: { 
+                    mode: 'index', 
+                    intersect: false,
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 10
+                }
+            }
+        }
+    });
+
+    // Hourly Activity Chart
+    {% if total_detections > 0 %}
+    const activityCtx = document.getElementById('activityChart').getContext('2d');
+    new Chart(activityCtx, {
+        type: 'line',
+        data: {
+            labels: {{ hourly_labels|safe }},
+            datasets: [
+                { 
+                    label: 'Happy', 
+                    data: {{ hourly_happy|safe }}, 
+                    borderColor: emotionColors.happy,
+                    backgroundColor: emotionColors.happy + '20',
+                    tension: 0.4,
+                    borderWidth: 3,
+                    fill: true
+                },
+                { 
+                    label: 'Neutral', 
+                    data: {{ hourly_neutral|safe }}, 
+                    borderColor: emotionColors.neutral,
+                    backgroundColor: emotionColors.neutral + '20',
+                    tension: 0.4,
+                    borderWidth: 3,
+                    fill: true
+                },
+                { 
+                    label: 'Sad', 
+                    data: {{ hourly_sad|safe }}, 
+                    borderColor: emotionColors.sad,
+                    backgroundColor: emotionColors.sad + '20',
+                    tension: 0.4,
+                    borderWidth: 3,
+                    fill: true
+                },
+                { 
+                    label: 'Angry', 
+                    data: {{ hourly_angry|safe }}, 
+                    borderColor: emotionColors.angry,
+                    backgroundColor: emotionColors.angry + '20',
+                    tension: 0.4,
+                    borderWidth: 3,
+                    fill: true
+                },
+                { 
+                    label: 'Surprise', 
+                    data: {{ hourly_surprise|safe }}, 
+                    borderColor: emotionColors.surprise,
+                    backgroundColor: emotionColors.surprise + '20',
+                    tension: 0.4,
+                    borderWidth: 3,
+                    fill: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { 
+                legend: { 
+                    position: 'top',
+                    labels: { usePointStyle: true }
+                } 
+            },
+            scales: {
+                y: { 
+                    beginAtZero: true, 
+                    title: { text: 'Detections', display: true },
+                    grid: { color: 'rgba(0, 0, 0, 0.05)' }
+                },
+                x: { 
+                    title: { text: 'Hour of Day', display: true },
+                    grid: { display: false }
+                }
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            }
+        }
+    });
+    {% endif %}
+</script>
+{% endblock %}

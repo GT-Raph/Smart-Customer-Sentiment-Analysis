@@ -1,0 +1,5 @@
+-r api_server/requirements.txt
+-r emotion_dashboard/requirements.txt
+scipy>=1.10,<2
+requests>=2.32,<3
+pytest>=8,<9

@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Compile
+        run: python -m compileall -q api_server clients emotion_dashboard tests
+      - name: API and worker unit tests
+        env:
+          DATABASE_URL: postgresql://unused:unused@localhost/unused
+          REDIS_URL: redis://localhost:6379/0
+        run: python -m unittest discover -s tests -v
+      - name: Django migration and tenant tests
+        working-directory: emotion_dashboard
+        env:
+          DJANGO_DEBUG: "true"
+          DJANGO_SECRET_KEY: test-only
+          DATABASE_URL: sqlite:////tmp/sentiment-ci.sqlite3
+        run: |
+          python manage.py makemigrations --check --dry-run
+          python manage.py test monitor -v 2
+      - name: Django deployment check
+        working-directory: emotion_dashboard
+        env:
+          DJANGO_DEBUG: "false"
+          DJANGO_SECRET_KEY: test-only-secret-key-that-is-long-enough-for-ci-123456789
+          DJANGO_ALLOWED_HOSTS: example.com
+          DJANGO_CSRF_TRUSTED_ORIGINS: https://example.com
+          DATABASE_URL: sqlite:////tmp/sentiment-ci.sqlite3
+        run: python manage.py check --deploy

@@ -1,0 +1,136 @@
+{% extends "monitor/base.html" %}
+
+{% block page_title %}Visit History{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">Visit History</h6>
+                <div>
+                    <a href="?export=true{% if selected_emotion %}&emotion={{ selected_emotion }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if face_id %}&face_id={{ face_id }}{% endif %}" 
+                       class="btn btn-sm btn-outline-primary me-2">
+                        <i class="bi bi-download"></i> Export
+                    </a>
+                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#filtersModal">
+                        <i class="bi bi-funnel"></i> Filters
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Face ID</th>
+                                <th>Date</th>
+                                <th>Visit Range</th>
+                                <th>Visits</th>
+                                <th>Branch</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for visit in visits %}
+                            <tr>
+                                <td>
+                                    {% if visit.visitor_id %}
+                                        <a href="{% url 'visitor_detail' visit.visitor_id %}" class="text-decoration-none">
+                                            {{ visit.face_id|default:"Unknown" }}
+                                        </a>
+                                    {% else %}
+                                        {{ visit.face_id|default:"Unknown" }}
+                                    {% endif %}
+                                </td>
+                                <td>{{ visit.visit_date|date:"M d, Y" }}</td>
+                                <td>{{ visit.first_visit|time }} - {{ visit.last_visit|time }}</td>
+                                <td>{{ visit.visit_count }}</td>
+                                <td>{{ visit.branch__name }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center py-4">No visits found</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% if visits.has_other_pages %}
+            <div class="card-footer">
+                <nav aria-label="Page navigation">
+                    <ul class="pagination pagination-sm mb-0 justify-content-center">
+                        {% if visits.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ visits.previous_page_number }}{% if selected_emotion %}&emotion={{ selected_emotion }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if face_id %}&face_id={{ face_id }}{% endif %}" aria-label="Previous">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+                        {% endif %}
+                        
+                        {% for i in visits.paginator.page_range %}
+                            {% if visits.number == i %}
+                            <li class="page-item active"><span class="page-link">{{ i }}</span></li>
+                            {% else %}
+                            <li class="page-item"><a class="page-link" href="?page={{ i }}{% if selected_emotion %}&emotion={{ selected_emotion }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if face_id %}&face_id={{ face_id }}{% endif %}">{{ i }}</a></li>
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if visits.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ visits.next_page_number }}{% if selected_emotion %}&emotion={{ selected_emotion }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if face_id %}&face_id={{ face_id }}{% endif %}" aria-label="Next">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Filters Modal -->
+<div class="modal fade" id="filtersModal" tabindex="-1" aria-labelledby="filtersModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="filtersModalLabel">Filter Visits</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="get">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Face ID</label>
+                        <input type="text" name="face_id" class="form-control" value="{{ face_id|default:'' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Emotion</label>
+                        <select name="emotion" class="form-select">
+                            <option value="">All Emotions</option>
+                            <option value="happy" {% if selected_emotion == 'happy' %}selected{% endif %}>Happy</option>
+                            <option value="neutral" {% if selected_emotion == 'neutral' %}selected{% endif %}>Neutral</option>
+                            <option value="sad" {% if selected_emotion == 'sad' %}selected{% endif %}>Sad</option>
+                            <option value="angry" {% if selected_emotion == 'angry' %}selected{% endif %}>Angry</option>
+                            <option value="surprise" {% if selected_emotion == 'surprise' %}selected{% endif %}>Surprise</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Date Range</label>
+                        <div class="input-group mb-2">
+                            <input type="date" name="date_from" class="form-control" value="{{ date_from|default:'' }}">
+                            <span class="input-group-text">to</span>
+                            <input type="date" name="date_to" class="form-control" value="{{ date_to|default:'' }}">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Apply Filters</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
