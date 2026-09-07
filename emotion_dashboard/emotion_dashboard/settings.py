@@ -48,7 +48,10 @@ def database_from_mysql_env() -> dict[str, object]:
         "PASSWORD": os.getenv("MYSQL_PASSWORD", ""),
         "HOST": os.getenv("MYSQL_HOST", "127.0.0.1"),
         "PORT": port,
-        "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "60")),
+        # XAMPP is commonly stopped/restarted during local development. Do not
+        # reuse a connection that belonged to the previous MariaDB process.
+        "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "0")),
+        "CONN_HEALTH_CHECKS": True,
         "OPTIONS": {
             "charset": "utf8mb4",
             "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",

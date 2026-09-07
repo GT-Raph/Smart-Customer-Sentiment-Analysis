@@ -17,6 +17,10 @@ The local XAMPP defaults are `MYSQL_USER=root`, an empty `MYSQL_PASSWORD`, and
 `MYSQL_HOST=127.0.0.1`. Never expose this development database to a network. Use
 a dedicated password-protected account for a production installation.
 
+`DB_CONN_MAX_AGE=0` makes Django close each request's connection. This prevents
+`Server has gone away` errors when XAMPP MySQL is stopped and started again;
+XAMPP MySQL must still be running before opening a database-backed page.
+
 The MariaDB 10.4 series bundled with many XAMPP releases is end-of-life and is
 below Django 5.2's officially supported MariaDB 10.5 minimum. The
 `XAMPP_ALLOW_MARIADB_10_4=true` compatibility option keeps local XAMPP working,
