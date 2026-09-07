@@ -114,7 +114,7 @@ ASGI_APPLICATION = "emotion_dashboard.asgi.application"
 
 DATABASE_ENGINE = os.getenv(
     "DATABASE_ENGINE",
-    "sqlite" if DEBUG else "mysql",
+    "mysql",
 ).strip().lower()
 if DATABASE_ENGINE == "sqlite":
     DATABASES = {
