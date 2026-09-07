@@ -3,34 +3,29 @@ import secrets
 
 from django.core.management.base import BaseCommand, CommandError
 
-from monitor.models import Branch, Device, Organization
+from monitor.models import Branch, Device
 
 
 class Command(BaseCommand):
     help = "Create a device and print its API key once"
 
     def add_arguments(self, parser):
-        parser.add_argument("--organization", required=True, help="Organization slug")
         parser.add_argument("--branch", required=True, type=int, help="Branch ID")
         parser.add_argument("--name", required=True)
         parser.add_argument("--pc-name", required=True)
 
     def handle(self, *args, **options):
         try:
-            organization = Organization.objects.get(slug=options["organization"], is_active=True)
-            branch = Branch.objects.get(
-                id=options["branch"], organization=organization, is_active=True
-            )
-        except (Organization.DoesNotExist, Branch.DoesNotExist) as exc:
-            raise CommandError("Active organization/branch not found") from exc
+            branch = Branch.objects.get(id=options["branch"], is_active=True)
+        except Branch.DoesNotExist as exc:
+            raise CommandError("Active branch not found") from exc
 
-        if Device.objects.filter(organization=organization, pc_name=options["pc_name"]).exists():
-            raise CommandError("A device with that PC name already exists in this organization")
+        if Device.objects.filter(pc_name=options["pc_name"]).exists():
+            raise CommandError("A device with that PC name already exists")
 
         prefix = secrets.token_hex(6)
         token = f"scs_{prefix}_{secrets.token_urlsafe(32)}"
         Device.objects.create(
-            organization=organization,
             branch=branch,
             name=options["name"],
             pc_name=options["pc_name"],

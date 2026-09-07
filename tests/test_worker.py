@@ -29,7 +29,6 @@ class WorkerTests(unittest.TestCase):
             snapshot = {
                 "id": 10,
                 "job_id": "01TESTJOB",
-                "organization_id": 7,
                 "device_id": 3,
                 "session_id": "visit12345",
                 "image_path": str(path),
@@ -57,7 +56,7 @@ class WorkerTests(unittest.TestCase):
 
             self.assertEqual(result["emotion"], "happy")
             mark_processing.assert_called_once_with(10)
-            create_visitor.assert_called_once_with(7, "session-3-visit12345")
+            create_visitor.assert_called_once_with("session-3-visit12345")
             complete_snapshot.assert_called_once()
             kwargs = complete_snapshot.call_args.kwargs
             self.assertAlmostEqual(kwargs["confidence"], 0.92)

@@ -1,4 +1,4 @@
-"""Django settings for the SaaS dashboard.
+"""Django settings for the self-hosted dashboard.
 
 All deployment-specific values come from environment variables. See the root
 ``.env.example`` file.

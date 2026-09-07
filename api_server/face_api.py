@@ -25,7 +25,6 @@ from rq import Queue
 from .config import settings
 from .db_utils import (
     DeviceContext,
-    QuotaExceeded,
     authenticate_device,
     database_is_ready,
     get_snapshot_for_device,
@@ -209,10 +208,6 @@ async def upload_face(
         )
         return {"job_id": job_id, "status": "queued"}
 
-    except QuotaExceeded as exc:
-        final_path.unlink(missing_ok=True)
-        temporary_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=429, detail=str(exc)) from exc
     except HTTPException:
         raise
     except Exception as exc:

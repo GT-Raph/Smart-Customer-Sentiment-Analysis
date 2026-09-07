@@ -7,39 +7,42 @@ Reference camera client
         v
 FastAPI ingestion service
         |-- validates image and rate limit
-        |-- writes queued job to PostgreSQL
-        `-- enqueues job in Redis/RQ
+        |-- writes a queued job to PostgreSQL
+        `-- enqueues the job in Redis/RQ
                     |
                     v
 Long-lived DeepFace worker
         |-- expression analysis
-        |-- optional organisation-scoped face matching
-        |-- deletes raw image by default
-        `-- stores result and terminal status
+        |-- optional installation-wide face matching
+        |-- deletes raw images by default
+        `-- stores the result and terminal status
                     |
                     v
-Django SaaS dashboard/admin
-        |-- organisations and branches
-        |-- users and tenant access
+Django local dashboard/admin
+        |-- physical branches
+        |-- local users and branch access
         |-- registered/revocable devices
         `-- processed aggregate analytics
 ```
 
+## Deployment boundary
+
+One deployment belongs to one organization. There is no tenant selector, billing
+account, subscription status, plan, or analysis quota. Deploy a separate instance
+and database when another organization needs the system.
+
 ## Ownership boundaries
 
 - Django migrations own the relational schema.
-- FastAPI handles ingestion only and does not load TensorFlow.
-- The worker performs model inference and keeps models warm in a long-lived
-  process.
-- Redis is transient job infrastructure; PostgreSQL is the job/result record.
-- Local shared storage is supported for one-host deployment. Multi-host
-  production requires private object storage.
+- FastAPI handles ingestion and does not load TensorFlow.
+- The RQ worker performs inference and keeps models warm.
+- Redis is transient queue infrastructure; PostgreSQL stores jobs and results.
+- The included shared volume supports a one-host installation.
 
-## Privacy defaults
+## Privacy and security defaults
 
-- Persistent face identification is off by default; the reference client uses short-lived visit sessions instead.
+- Persistent face identification is off by default.
 - Raw images are deleted after successful analysis by default.
-- A device is bound to one organisation and branch.
-- Subscription status and monthly organisation quotas are enforced before queueing.
-- An unassigned dashboard user is denied instead of receiving unfiltered data.
-- Results are described as expression signals, not verified internal emotions.
+- Every camera is authenticated with a revocable device API key.
+- Normal dashboard users only see their assigned branch.
+- Results are expression signals, not verified internal emotions.

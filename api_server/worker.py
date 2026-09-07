@@ -89,7 +89,7 @@ def process_snapshot(snapshot_id: int) -> dict[str, object]:
             embedding = list(representation[0]["embedding"])
             matched = match_face(
                 embedding,
-                get_embeddings(int(snapshot["organization_id"])),
+                get_embeddings(),
                 settings.match_threshold,
             )
             if matched:
@@ -101,9 +101,7 @@ def process_snapshot(snapshot_id: int) -> dict[str, object]:
             session_id = snapshot.get("session_id") or snapshot["job_id"]
             face_id = f"session-{snapshot['device_id']}-{session_id}"
 
-        visitor_id = matched_visitor_id or create_visitor(
-            int(snapshot["organization_id"]), face_id
-        )
+        visitor_id = matched_visitor_id or create_visitor(face_id)
 
         retained_path: str | None = (
             None if settings.delete_raw_image_after_processing else str(image_path)

@@ -1,7 +1,7 @@
 # Development usage
 
-Python 3.10 is recommended because the pinned TensorFlow worker dependency is
-built for that runtime.
+Python 3.10 is recommended because the pinned TensorFlow worker dependency targets
+that runtime.
 
 ## Docker path
 
@@ -11,18 +11,12 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Then:
-
-```bash
-docker compose exec dashboard python manage.py createsuperuser
-```
-
-Open the Django admin, create an organisation and branch, and generate a device
-key as described in `DEPLOYMENT.md`.
+Then create an administrator, a branch, and a device key as described in
+`DEPLOYMENT.md`. No organization or subscription record is required.
 
 ## Separate local environments
 
-The web/API test environment deliberately excludes TensorFlow:
+The API/dashboard test environment excludes TensorFlow:
 
 ```bash
 python -m venv .venv
@@ -55,8 +49,6 @@ python manage.py runserver 8000
 ## Tests
 
 ```bash
-DATABASE_URL=postgresql://unused:unused@localhost/unused \
-REDIS_URL=redis://localhost:6379/0 \
 python -m unittest discover -s tests -v
 
 cd emotion_dashboard

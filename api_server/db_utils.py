@@ -20,16 +20,9 @@ from .security import api_key_prefix, hash_api_key
 @dataclass(frozen=True)
 class DeviceContext:
     id: int
-    organization_id: int
     branch_id: int
     name: str
     pc_name: str
-    plan: str = "free"
-    monthly_analysis_limit: int = 1000
-
-
-class QuotaExceeded(RuntimeError):
-    pass
 
 
 @contextmanager
@@ -54,15 +47,11 @@ def authenticate_device(token: str) -> DeviceContext | None:
     with database() as db, db.cursor(cursor_factory=RealDictCursor) as cursor:
         cursor.execute(
             """
-            SELECT d.id, d.organization_id, d.branch_id, d.name, d.pc_name,
-                   d.api_key_hash, o.plan, o.monthly_analysis_limit
+            SELECT d.id, d.branch_id, d.name, d.pc_name, d.api_key_hash
               FROM monitor_device d
-              JOIN monitor_organization o ON o.id = d.organization_id
               JOIN monitor_branch b ON b.id = d.branch_id
              WHERE d.api_key_prefix = %s
                AND d.is_active = TRUE
-               AND o.is_active = TRUE
-               AND o.subscription_status IN ('trialing', 'active')
                AND b.is_active = TRUE
              LIMIT 1
             """,
@@ -78,12 +67,9 @@ def authenticate_device(token: str) -> DeviceContext | None:
         )
         return DeviceContext(
             id=row["id"],
-            organization_id=row["organization_id"],
             branch_id=row["branch_id"],
             name=row["name"],
             pc_name=row["pc_name"] or row["name"],
-            plan=row["plan"],
-            monthly_analysis_limit=row["monthly_analysis_limit"],
         )
 
 
@@ -98,48 +84,17 @@ def insert_snapshot(
 ) -> int:
     with database() as db, db.cursor() as cursor:
         now = datetime.now(timezone.utc)
-        period_start = now.date().replace(day=1)
-        if device.monthly_analysis_limit > 0:
-            cursor.execute(
-                """
-                INSERT INTO monitor_monthlyusage (
-                    organization_id, period_start, analyses_count, updated_at
-                ) VALUES (%s, %s, 1, %s)
-                ON CONFLICT (organization_id, period_start)
-                DO UPDATE SET analyses_count = monitor_monthlyusage.analyses_count + 1,
-                              updated_at = EXCLUDED.updated_at
-                WHERE monitor_monthlyusage.analyses_count < %s
-                RETURNING analyses_count
-                """,
-                (device.organization_id, period_start, now, device.monthly_analysis_limit),
-            )
-            if cursor.fetchone() is None:
-                raise QuotaExceeded("Monthly analysis quota exceeded")
-        else:
-            cursor.execute(
-                """
-                INSERT INTO monitor_monthlyusage (
-                    organization_id, period_start, analyses_count, updated_at
-                ) VALUES (%s, %s, 1, %s)
-                ON CONFLICT (organization_id, period_start)
-                DO UPDATE SET analyses_count = monitor_monthlyusage.analyses_count + 1,
-                              updated_at = EXCLUDED.updated_at
-                """,
-                (device.organization_id, period_start, now),
-            )
-
         cursor.execute(
             """
             INSERT INTO captured_snapshots (
-                job_id, organization_id, branch_id, device_id, pc_name, session_id,
+                job_id, branch_id, device_id, pc_name, session_id,
                 image_path, upload_content_type, upload_size_bytes,
                 status, processed, timestamp
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'queued', FALSE, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'queued', FALSE, %s)
             RETURNING id
             """,
             (
                 job_id,
-                device.organization_id,
                 device.branch_id,
                 device.id,
                 device.pc_name,
@@ -169,13 +124,12 @@ def get_snapshot_for_device(job_id: str, device: DeviceContext) -> dict[str, Any
             """
             SELECT id, job_id, status, emotion, confidence, error_message,
                    image_path, timestamp, processed_at
-              FROM captured_snapshots
+             FROM captured_snapshots
              WHERE job_id = %s
-               AND organization_id = %s
                AND device_id = %s
              LIMIT 1
             """,
-            (job_id, device.organization_id, device.id),
+            (job_id, device.id),
         )
         row = cursor.fetchone()
         return dict(row) if row else None
@@ -207,7 +161,7 @@ def mark_failed(snapshot_id: int, error_message: str) -> None:
         )
 
 
-def get_embeddings(organization_id: int) -> list[tuple[int, str, np.ndarray]]:
+def get_embeddings() -> list[tuple[int, str, np.ndarray]]:
     with database() as db, db.cursor() as cursor:
         cursor.execute(
             """
@@ -221,9 +175,7 @@ def get_embeddings(organization_id: int) -> list[tuple[int, str, np.ndarray]]:
                      ORDER BY cs.timestamp DESC
                      LIMIT 1
               ) s ON TRUE
-             WHERE v.organization_id = %s
-            """,
-            (organization_id,),
+            """
         )
         known: list[tuple[int, str, np.ndarray]] = []
         for visitor_id, face_id, value in cursor.fetchall():
@@ -239,18 +191,18 @@ def get_embeddings(organization_id: int) -> list[tuple[int, str, np.ndarray]]:
         return known
 
 
-def create_visitor(organization_id: int, face_id: str) -> int:
+def create_visitor(face_id: str) -> int:
     now = datetime.now(timezone.utc)
     with database() as db, db.cursor() as cursor:
         cursor.execute(
             """
-            INSERT INTO monitor_visitor (organization_id, face_id, first_seen, last_seen)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (organization_id, face_id)
+            INSERT INTO monitor_visitor (face_id, first_seen, last_seen)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (face_id)
             DO UPDATE SET last_seen = EXCLUDED.last_seen
             RETURNING id
             """,
-            (organization_id, face_id, now, now),
+            (face_id, now, now),
         )
         return int(cursor.fetchone()[0])
 

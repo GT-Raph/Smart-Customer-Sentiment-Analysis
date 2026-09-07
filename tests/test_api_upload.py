@@ -11,7 +11,7 @@ import numpy as np
 from fastapi import HTTPException, UploadFile
 
 from api_server import face_api
-from api_server.db_utils import DeviceContext, QuotaExceeded
+from api_server.db_utils import DeviceContext
 
 
 class FakeQueue:
@@ -26,7 +26,6 @@ class UploadTests(unittest.TestCase):
     def setUp(self):
         self.device = DeviceContext(
             id=1,
-            organization_id=2,
             branch_id=3,
             name="front desk",
             pc_name="ACC001-CAM",
@@ -74,7 +73,7 @@ class UploadTests(unittest.TestCase):
         self.assertEqual(len(list(Path(self.temp.name).glob("*.jpg"))), 1)
 
 
-    def test_monthly_quota_is_enforced_and_file_is_removed(self):
+    def test_database_failure_removes_staged_file(self):
         upload = UploadFile(
             filename="face.jpg",
             file=io.BytesIO(self.jpeg_bytes()),
@@ -83,7 +82,7 @@ class UploadTests(unittest.TestCase):
         with (
             patch.object(face_api, "settings", self.settings),
             patch.object(face_api, "_rate_limit"),
-            patch.object(face_api, "insert_snapshot", side_effect=QuotaExceeded("Monthly analysis quota exceeded")),
+            patch.object(face_api, "insert_snapshot", side_effect=RuntimeError("database error")),
         ):
             with self.assertRaises(HTTPException) as context:
                 asyncio.run(
@@ -91,7 +90,7 @@ class UploadTests(unittest.TestCase):
                         upload, session_id="session123", device=self.device
                     )
                 )
-        self.assertEqual(context.exception.status_code, 429)
+        self.assertEqual(context.exception.status_code, 503)
         self.assertEqual(list(Path(self.temp.name).glob("*.jpg")), [])
 
     def test_invalid_session_id_is_rejected(self):

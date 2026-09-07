@@ -1,31 +1,30 @@
 # Ingestion API
 
-Base URL for local development: `http://localhost:8001`
+Base URL for local operation: `http://localhost:8001`
 
-Every device request must include the key created by Django:
+Every camera request must include the key created by Django:
 
 ```http
 X-API-Key: scs_<prefix>_<secret>
 ```
 
-The server stores only the SHA-256 hash of the full key. A key is shown once by
+Only a SHA-256 hash of the full key is stored. The key is shown once by
 `python manage.py create_device_key` and can be revoked by disabling its Device
 record in Django admin.
 
 ## `GET /health`
 
-Checks PostgreSQL and Redis. Returns HTTP 503 when either dependency is down.
+Checks PostgreSQL and Redis. It returns HTTP 503 when either dependency is down.
 
 ## `POST /v1/snapshots`
 
-Uploads one cropped face as `multipart/form-data` field `file`.
+Uploads one cropped face as the `file` field in `multipart/form-data`. JPEG, PNG,
+and WebP are accepted. Declared and actual types must match. Byte-size, image
+dimensions, and per-device rate limits apply.
 
-Accepted formats: JPEG, PNG and WebP. The declared content type must match the
-actual file. Byte-size, decoded dimensions and per-device rate limits apply.
-
-The device supplies a short-lived `session_id` so repeated frames during one visit are not counted as different visitors when biometric identification is disabled.
-
-Organisation subscription status and the monthly analysis quota are checked before the job is accepted. A full quota returns HTTP 429.
+The optional `session_id` identifies repeated frames from one visit when biometric
+identification is disabled. The non-SaaS edition does not apply subscription or
+monthly usage limits.
 
 Successful response:
 
@@ -36,18 +35,13 @@ Successful response:
 }
 ```
 
-The legacy path `/upload-face` points to the same handler but is hidden from the
-OpenAPI schema.
-
 ## `GET /v1/snapshots/{job_id}`
 
-Returns status for a job created by the same device. Devices cannot read jobs
-belonging to another device or organisation.
-
-Possible states: `queued`, `processing`, `processed`, `failed`.
+Returns the status of a job created by the same device. Possible states are
+`queued`, `processing`, `processed`, and `failed`.
 
 ## Raw images
 
-There is no public image-listing endpoint. A development-only authenticated
-image endpoint exists behind `ENABLE_DEV_IMAGE_ENDPOINT=true`; keep it disabled
-in production. The worker deletes raw images after processing by default.
+There is no public image listing. A development-only authenticated endpoint is
+available behind `ENABLE_DEV_IMAGE_ENDPOINT=true`. Keep it disabled outside local
+development. The worker deletes raw images after processing by default.

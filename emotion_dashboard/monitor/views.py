@@ -210,12 +210,12 @@ def dashboard(request):
 
 
 def get_user_pc_prefix(user):
-    """Return the assigned branch prefix, denying unscoped tenant users."""
+    """Return the assigned branch prefix for a local dashboard user."""
     if user.is_superuser:
         return None
-    if not user.organization_id or not user.branch_id:
-        raise PermissionDenied("Your account has no organization and branch assignment.")
-    if user.branch.organization_id != user.organization_id or not user.branch.is_active:
+    if not user.branch_id:
+        raise PermissionDenied("Your account has no branch assignment.")
+    if not user.branch.is_active:
         raise PermissionDenied("Your branch assignment is invalid or inactive.")
     return user.branch.pc_prefix
 
