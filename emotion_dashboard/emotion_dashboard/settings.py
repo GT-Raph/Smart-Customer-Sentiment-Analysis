@@ -132,6 +132,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "monitor.context_processors.user_preferences",
             ],
         },
     }
@@ -174,6 +175,14 @@ STATICFILES_DIRS = [path for path in [BASE_DIR / "static"] if path.exists()]
 # them in private storage and deletes them by default after processing.
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+captured_faces_value = os.getenv("CAPTURED_FACES_DIR", "private_uploads")
+if os.name == "nt" and captured_faces_value.startswith("/"):
+    captured_faces_value = "private_uploads"
+CAPTURED_FACES_ROOT = Path(captured_faces_value)
+if not CAPTURED_FACES_ROOT.is_absolute():
+    CAPTURED_FACES_ROOT = BASE_DIR.parent / CAPTURED_FACES_ROOT
+CAPTURED_FACES_ROOT = CAPTURED_FACES_ROOT.resolve()
 
 AUTH_USER_MODEL = "monitor.CustomUser"
 LOGIN_URL = "/login/"

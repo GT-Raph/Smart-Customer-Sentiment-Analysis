@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
@@ -36,6 +38,80 @@ class CustomUser(AbstractUser):
         related_name="users",
         verbose_name="Assigned Branch",
     )
+
+    @property
+    def can_manage_all_branches(self) -> bool:
+        return self.is_superuser
+
+
+class UserPreference(models.Model):
+    DATE_RANGE_CHOICES = (
+        ("day", "Today"),
+        ("week", "Last 7 days"),
+        ("14days", "Last 14 days"),
+        ("month", "Last 30 days"),
+    )
+    HOURLY_RANGE_CHOICES = (
+        ("today", "Today"),
+        ("yesterday", "Yesterday"),
+    )
+    AUTO_REFRESH_CHOICES = (
+        (0, "Disabled"),
+        (30, "Every 30 seconds"),
+        (60, "Every minute"),
+        (120, "Every 2 minutes"),
+        (300, "Every 5 minutes"),
+    )
+
+    user = models.OneToOneField(
+        CustomUser, on_delete=models.CASCADE, related_name="preferences"
+    )
+    default_date_range = models.CharField(
+        max_length=10, choices=DATE_RANGE_CHOICES, default="14days"
+    )
+    default_hourly_range = models.CharField(
+        max_length=12, choices=HOURLY_RANGE_CHOICES, default="today"
+    )
+    default_branch = models.ForeignKey(
+        Branch,
+        on_delete=models.SET_NULL,
+        related_name="default_for_users",
+        null=True,
+        blank=True,
+    )
+    auto_refresh_seconds = models.PositiveIntegerField(
+        choices=AUTO_REFRESH_CHOICES, default=0
+    )
+    compact_mode = models.BooleanField(default=False)
+    reduce_motion = models.BooleanField(default=False)
+    email_weekly_summary = models.BooleanField(default=False)
+    notify_negative = models.BooleanField(default=False)
+    negative_threshold = models.PositiveSmallIntegerField(
+        default=35,
+        validators=[MinValueValidator(1), MaxValueValidator(100)],
+    )
+    minimum_detections = models.PositiveIntegerField(
+        default=20,
+        validators=[MinValueValidator(1), MaxValueValidator(100000)],
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "monitor_user_preference"
+
+    def clean(self) -> None:
+        super().clean()
+        if (
+            self.default_branch_id
+            and not self.user.is_superuser
+            and self.default_branch_id != self.user.branch_id
+        ):
+            raise ValidationError(
+                {"default_branch": "Choose your assigned branch."}
+            )
+
+    def __str__(self) -> str:
+        return f"Preferences for {self.user.username}"
 
 
 class UserProfile(models.Model):

@@ -34,8 +34,11 @@ services:
       POSTGRES_PORT: 5432
       DJANGO_USE_SQLITE: "false"
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,dashboard
+      CAPTURED_FACES_DIR: /data/private_uploads
     ports:
       - "8000:8000"
+    volumes:
+      - private_uploads:/data/private_uploads
     depends_on:
       postgres:
         condition: service_healthy

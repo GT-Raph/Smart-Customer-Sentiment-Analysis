@@ -95,3 +95,8 @@ class NonSaaSMigrationTests(TransactionTestCase):
         self.assertEqual(
             CapturedSnapshot.objects.values("visitor_id").distinct().count(), 1
         )
+
+    def tearDown(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate([("monitor", "0003_user_preferences")])
+        super().tearDown()

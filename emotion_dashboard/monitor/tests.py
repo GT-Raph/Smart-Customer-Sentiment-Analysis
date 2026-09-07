@@ -4,8 +4,9 @@ import io
 from django.core.exceptions import PermissionDenied
 from django.core.management import call_command
 from django.test import TestCase
+from django.utils import timezone
 
-from .models import Branch, CustomUser, Device
+from .models import Branch, CapturedSnapshot, CustomUser, Device, Visitor
 from .views import get_user_pc_prefix
 
 
@@ -82,6 +83,31 @@ class DashboardUiSmokeTests(TestCase):
             email="admin@example.com",
             password="safe-pass-123",
         )
+        self.device = Device.objects.create(
+            branch=self.branch,
+            name="Front desk",
+            pc_name="ACC001-CAM",
+            api_key_prefix="ui-test",
+            api_key_hash="a" * 64,
+            last_seen_at=timezone.now(),
+        )
+        self.visitor = Visitor.objects.create(
+            face_id="ui-visitor",
+            first_seen=timezone.now(),
+            last_seen=timezone.now(),
+        )
+        self.snapshot = CapturedSnapshot.objects.create(
+            job_id="01UITEST000000000000000000",
+            branch=self.branch,
+            device=self.device,
+            visitor=self.visitor,
+            pc_name=self.device.pc_name,
+            timestamp=timezone.now(),
+            status=CapturedSnapshot.Status.PROCESSED,
+            processed=True,
+            emotion="happy",
+            confidence=0.95,
+        )
 
     def test_public_login_page_uses_existing_saas_style_template(self):
         response = self.client.get("/")
@@ -105,3 +131,42 @@ class DashboardUiSmokeTests(TestCase):
                 response = self.client.get(route)
                 self.assertEqual(response.status_code, 200)
                 self.assertTemplateUsed(response, template)
+
+    def test_dashboard_contains_full_sidebar_navigation(self):
+        self.client.force_login(self.admin)
+        response = self.client.get("/dashboard/")
+
+        self.assertContains(response, 'id="sidebar"')
+        self.assertContains(response, 'id="sidebarToggle"')
+        self.assertContains(response, 'href="/dashboard/"')
+        self.assertContains(response, 'href="/branches/"')
+        self.assertContains(response, 'href="/emotion-analytics/"')
+        self.assertContains(response, 'href="/reports/"')
+        self.assertContains(response, 'href="/settings/"')
+        self.assertContains(response, "Self-hosted intelligence")
+
+    def test_logout_is_post_only(self):
+        self.client.force_login(self.admin)
+
+        self.assertEqual(self.client.get("/logout/").status_code, 405)
+        response = self.client.post("/logout/")
+
+        self.assertRedirects(response, "/")
+
+    def test_csv_report_uses_non_saas_columns(self):
+        self.client.force_login(self.admin)
+        today = timezone.localdate().isoformat()
+        response = self.client.post(
+            "/reports/",
+            {
+                "date_from": today,
+                "date_to": today,
+                "branch": str(self.branch.pk),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        content = b"".join(response.streaming_content).decode("utf-8")
+        self.assertIn("Branch,Visitor ID,PC,Emotion,Confidence,Timestamp", content)
+        self.assertIn("Accra,ui-visitor,ACC001-CAM,happy,0.95", content)
+        self.assertNotIn("Bank", content)

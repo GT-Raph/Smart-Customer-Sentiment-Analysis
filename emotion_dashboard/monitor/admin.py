@@ -1,7 +1,15 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from .models import Branch, CapturedSnapshot, CustomUser, Device, UserProfile, Visitor
+from .models import (
+    Branch,
+    CapturedSnapshot,
+    CustomUser,
+    Device,
+    UserPreference,
+    UserProfile,
+    Visitor,
+)
 
 
 @admin.register(Branch)
@@ -33,6 +41,7 @@ class CustomUserAdmin(UserAdmin):
 
 admin.site.register(CustomUser, CustomUserAdmin)
 admin.site.register(UserProfile)
+admin.site.register(UserPreference)
 admin.site.register(Visitor)
 
 

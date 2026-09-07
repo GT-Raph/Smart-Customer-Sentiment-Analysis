@@ -3,6 +3,9 @@
 - Removed organization tenancy from users, branches, devices, visitors, and snapshots.
 - Removed plans, subscription states, billing references, monthly usage, and quotas.
 - Kept branch-level dashboard permissions for local staff.
+- Restored the polished SaaS dashboard presentation for the self-hosted edition,
+  including the desktop sidebar, mobile navigation, analytics, reports, settings,
+  and login experience, without restoring tenancy or billing behavior.
 - Kept revocable per-device API keys and per-device rate limiting.
 - Made device PC names and visitor face IDs unique within the installation.
 - Added a migration that consolidates duplicate visitor identities and safely renames
