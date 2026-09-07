@@ -30,7 +30,9 @@ services:
       dockerfile: Dockerfile.dashboard
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-sentiment}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sentiment}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      DJANGO_USE_SQLITE: "false"
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,dashboard
     ports:
       - "8000:8000"
@@ -49,7 +51,8 @@ services:
       dockerfile: Dockerfile.api
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-sentiment}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sentiment}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
       REDIS_URL: redis://redis:6379/0
       CAPTURED_FACES_DIR: /data/private_uploads
     ports:
@@ -69,7 +72,8 @@ services:
       dockerfile: Dockerfile.worker
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-sentiment}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sentiment}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
       REDIS_URL: redis://redis:6379/0
       CAPTURED_FACES_DIR: /data/private_uploads
     volumes:

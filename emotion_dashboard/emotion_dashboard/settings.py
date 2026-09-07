@@ -42,13 +42,47 @@ def database_from_url(url: str) -> dict[str, object]:
     if "sslmode" in query:
         options["sslmode"] = query["sslmode"][0]
 
+    try:
+        port = parsed.port or 5432
+    except ValueError as exc:
+        raise RuntimeError(
+            "DATABASE_URL has an invalid port. Percent-encode reserved characters "
+            "in its password, or use the separate POSTGRES_* settings."
+        ) from exc
+
     return {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": unquote(parsed.path.lstrip("/")),
         "USER": unquote(parsed.username or ""),
         "PASSWORD": unquote(parsed.password or ""),
         "HOST": parsed.hostname or "",
-        "PORT": str(parsed.port or 5432),
+        "PORT": str(port),
+        "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "60")),
+        "OPTIONS": options,
+    }
+
+
+def database_from_postgres_env() -> dict[str, object]:
+    """Build Django's database config without putting credentials in a URL."""
+
+    port = os.getenv("POSTGRES_PORT", "5432")
+    try:
+        int(port)
+    except ValueError as exc:
+        raise RuntimeError("POSTGRES_PORT must be an integer") from exc
+
+    options: dict[str, str] = {}
+    sslmode = os.getenv("POSTGRES_SSLMODE", "")
+    if sslmode:
+        options["sslmode"] = sslmode
+
+    return {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("POSTGRES_DB", "sentiment"),
+        "USER": os.getenv("POSTGRES_USER", "sentiment"),
+        "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
+        "HOST": os.getenv("POSTGRES_HOST", "localhost"),
+        "PORT": port,
         "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "60")),
         "OPTIONS": options,
     }
@@ -107,12 +141,18 @@ WSGI_APPLICATION = "emotion_dashboard.wsgi.application"
 ASGI_APPLICATION = "emotion_dashboard.asgi.application"
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    if DEBUG:
-        DATABASE_URL = f"sqlite:///{BASE_DIR / 'db.sqlite3'}"
-    else:
-        raise RuntimeError("DATABASE_URL is required when DJANGO_DEBUG is false")
-DATABASES = {"default": database_from_url(DATABASE_URL)}
+database_scheme = urlparse(DATABASE_URL).scheme if DATABASE_URL else ""
+USE_SQLITE = env_bool("DJANGO_USE_SQLITE", DEBUG)
+if USE_SQLITE:
+    DATABASES = {"default": database_from_url(f"sqlite:///{BASE_DIR / 'db.sqlite3'}")}
+elif database_scheme in {"sqlite", "sqlite3"}:
+    DATABASES = {"default": database_from_url(DATABASE_URL)}
+elif os.getenv("POSTGRES_PASSWORD") is not None:
+    DATABASES = {"default": database_from_postgres_env()}
+elif DATABASE_URL:
+    DATABASES = {"default": database_from_url(DATABASE_URL)}
+else:
+    raise RuntimeError("Database configuration is required when DJANGO_DEBUG is false")
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

@@ -8,12 +8,15 @@ production.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _as_bool(name: str, default: bool = False) -> bool:
@@ -37,16 +40,42 @@ def _as_float(name: str, default: float) -> float:
         raise RuntimeError(f"{name} must be a number") from exc
 
 
+def database_url_from_env() -> str:
+    """Build a safely escaped PostgreSQL URL when discrete settings are present."""
+
+    password = os.getenv("POSTGRES_PASSWORD")
+    if password is None:
+        return os.getenv("DATABASE_URL", "")
+
+    username = quote(os.getenv("POSTGRES_USER", "sentiment"), safe="")
+    encoded_password = quote(password, safe="")
+    database = quote(os.getenv("POSTGRES_DB", "sentiment"), safe="")
+    host = os.getenv("POSTGRES_HOST", "localhost")
+    port = _as_int("POSTGRES_PORT", 5432)
+    sslmode = os.getenv("POSTGRES_SSLMODE", "")
+    query = f"?sslmode={quote(sslmode, safe='')}" if sslmode else ""
+    return (
+        f"postgresql://{username}:{encoded_password}@{host}:{port}/{database}{query}"
+    )
+
+
+def captured_faces_dir_from_env() -> Path:
+    """Resolve local upload storage without treating Docker paths as Windows paths."""
+
+    configured = os.getenv("CAPTURED_FACES_DIR", "private_uploads")
+    if os.name == "nt" and configured.startswith("/"):
+        configured = "private_uploads"
+    path = Path(configured)
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    return path.resolve()
+
+
 @dataclass(frozen=True)
 class Settings:
-    database_url: str = os.getenv("DATABASE_URL", "")
+    database_url: str = field(default_factory=database_url_from_env)
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    captured_faces_dir: Path = Path(
-        os.getenv(
-            "CAPTURED_FACES_DIR",
-            str(Path(__file__).resolve().parent.parent / "private_uploads"),
-        )
-    ).resolve()
+    captured_faces_dir: Path = field(default_factory=captured_faces_dir_from_env)
 
     api_key_header: str = "X-API-Key"
     max_upload_bytes: int = _as_int("MAX_UPLOAD_BYTES", 5 * 1024 * 1024)

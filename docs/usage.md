@@ -46,6 +46,12 @@ python manage.py migrate
 python manage.py runserver 8000
 ```
 
+With `DJANGO_DEBUG=true`, Django uses a local SQLite database by default so the
+dashboard can run without Docker or PostgreSQL. Run migrations before the first
+start. Set `DJANGO_USE_SQLITE=false` only when the configured PostgreSQL database
+is available. The ingestion API and worker still require PostgreSQL and Redis;
+use the Docker deployment for the complete multi-service system.
+
 ## Tests
 
 ```bash

@@ -31,6 +31,8 @@ python clients/device_agent.py
 ```
 
 The dashboard is served on port 8000 and the ingestion API on port 8001.
+Docker Compose overrides `DJANGO_USE_SQLITE=false`, so every service shares the
+PostgreSQL database.
 
 ## Production checklist
 
