@@ -44,7 +44,7 @@ def database_from_mysql_env() -> dict[str, object]:
     return {
         "ENGINE": engine,
         "NAME": os.getenv("MYSQL_DATABASE", "smart_sentiment"),
-        "USER": os.getenv("MYSQL_USER", "sentiment_app"),
+        "USER": os.getenv("MYSQL_USER", "root"),
         "PASSWORD": os.getenv("MYSQL_PASSWORD", ""),
         "HOST": os.getenv("MYSQL_HOST", "127.0.0.1"),
         "PORT": port,

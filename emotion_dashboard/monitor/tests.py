@@ -1,13 +1,26 @@
 import hashlib
 import io
+from types import SimpleNamespace
 
 from django.core.exceptions import PermissionDenied
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
+
+from emotion_dashboard.xampp_mysql.features import DatabaseFeatures
 
 from .models import Branch, CapturedSnapshot, CustomUser, Device, Visitor
 from .views import get_user_pc_prefix
+
+
+class XamppCompatibilityBackendTests(SimpleTestCase):
+    def test_mariadb_10_4_uses_lastrowid_instead_of_returning(self):
+        features = DatabaseFeatures(
+            SimpleNamespace(mysql_is_mariadb=True, mysql_version=(10, 4, 32))
+        )
+
+        self.assertEqual(features.minimum_database_version, (10, 4))
+        self.assertFalse(features.can_return_columns_from_insert)
 
 
 class LocalAccessTests(TestCase):

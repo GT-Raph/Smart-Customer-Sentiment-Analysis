@@ -7,13 +7,11 @@ Start MySQL from the XAMPP Control Panel. In phpMyAdmin, open the SQL tab and ru
 ```sql
 CREATE DATABASE smart_sentiment
   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'sentiment_app'@'localhost' IDENTIFIED BY 'choose-a-strong-password';
-GRANT ALL PRIVILEGES ON smart_sentiment.* TO 'sentiment_app'@'localhost';
-FLUSH PRIVILEGES;
 ```
 
-Copy `.env.example` to `.env`, set the same MySQL password and a random Django
-secret, then initialize the schema and administrator:
+Copy `.env.example` to `.env`. The example uses XAMPP's local `root` account with
+an empty password; set a random Django secret, then initialize the schema and
+administrator:
 
 ```powershell
 cd emotion_dashboard

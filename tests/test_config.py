@@ -32,6 +32,16 @@ class DatabaseConfigurationTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "MYSQL_PORT"):
                 mysql_options_from_env()
 
+    def test_defaults_match_local_xampp(self):
+        with patch.dict(os.environ, {}, clear=True):
+            options = mysql_options_from_env()
+
+        self.assertEqual(options["host"], "127.0.0.1")
+        self.assertEqual(options["port"], 3306)
+        self.assertEqual(options["db"], "smart_sentiment")
+        self.assertEqual(options["user"], "root")
+        self.assertEqual(options["passwd"], "")
+
 
 if __name__ == "__main__":
     unittest.main()

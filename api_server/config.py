@@ -45,7 +45,7 @@ def mysql_options_from_env() -> dict[str, object]:
     return {
         "host": os.getenv("MYSQL_HOST", "127.0.0.1"),
         "port": _as_int("MYSQL_PORT", 3306),
-        "user": os.getenv("MYSQL_USER", "sentiment_app"),
+        "user": os.getenv("MYSQL_USER", "root"),
         "passwd": os.getenv("MYSQL_PASSWORD", ""),
         "db": os.getenv("MYSQL_DATABASE", "smart_sentiment"),
         "charset": "utf8mb4",

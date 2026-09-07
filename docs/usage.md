@@ -5,19 +5,17 @@ that runtime.
 
 ## XAMPP database
 
-Start MySQL in the XAMPP Control Panel, then create the database and a dedicated
-application account in the XAMPP shell:
+Start MySQL in the XAMPP Control Panel, then create the database in phpMyAdmin or
+the XAMPP shell:
 
 ```sql
 CREATE DATABASE smart_sentiment
   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'sentiment_app'@'localhost' IDENTIFIED BY 'choose-a-strong-password';
-GRANT ALL PRIVILEGES ON smart_sentiment.* TO 'sentiment_app'@'localhost';
-FLUSH PRIVILEGES;
 ```
 
-Copy `.env.example` to `.env`, put the same password in `MYSQL_PASSWORD`, and
-keep `MYSQL_HOST=127.0.0.1`. Never commit `.env`.
+The local XAMPP defaults are `MYSQL_USER=root`, an empty `MYSQL_PASSWORD`, and
+`MYSQL_HOST=127.0.0.1`. Never expose this development database to a network. Use
+a dedicated password-protected account for a production installation.
 
 The MariaDB 10.4 series bundled with many XAMPP releases is end-of-life and is
 below Django 5.2's officially supported MariaDB 10.5 minimum. The
