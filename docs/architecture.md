@@ -7,7 +7,7 @@ Reference camera client
         v
 FastAPI ingestion service
         |-- validates image and rate limit
-        |-- writes a queued job to PostgreSQL
+        |-- writes a queued job to XAMPP MariaDB
         `-- enqueues the job in Redis/RQ
                     |
                     v
@@ -36,7 +36,7 @@ and database when another organization needs the system.
 - Django migrations own the relational schema.
 - FastAPI handles ingestion and does not load TensorFlow.
 - The RQ worker performs inference and keeps models warm.
-- Redis is transient queue infrastructure; PostgreSQL stores jobs and results.
+- Redis is transient queue infrastructure; MariaDB stores jobs and results.
 - The included shared volume supports a one-host installation.
 
 ## Privacy and security defaults

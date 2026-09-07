@@ -10,7 +10,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import quote
 
 from dotenv import load_dotenv
 
@@ -40,23 +39,19 @@ def _as_float(name: str, default: float) -> float:
         raise RuntimeError(f"{name} must be a number") from exc
 
 
-def database_url_from_env() -> str:
-    """Build a safely escaped PostgreSQL URL when discrete settings are present."""
+def mysql_options_from_env() -> dict[str, object]:
+    """Return mysqlclient options shared by the ingestion API and worker."""
 
-    password = os.getenv("POSTGRES_PASSWORD")
-    if password is None:
-        return os.getenv("DATABASE_URL", "")
-
-    username = quote(os.getenv("POSTGRES_USER", "sentiment"), safe="")
-    encoded_password = quote(password, safe="")
-    database = quote(os.getenv("POSTGRES_DB", "sentiment"), safe="")
-    host = os.getenv("POSTGRES_HOST", "localhost")
-    port = _as_int("POSTGRES_PORT", 5432)
-    sslmode = os.getenv("POSTGRES_SSLMODE", "")
-    query = f"?sslmode={quote(sslmode, safe='')}" if sslmode else ""
-    return (
-        f"postgresql://{username}:{encoded_password}@{host}:{port}/{database}{query}"
-    )
+    return {
+        "host": os.getenv("MYSQL_HOST", "127.0.0.1"),
+        "port": _as_int("MYSQL_PORT", 3306),
+        "user": os.getenv("MYSQL_USER", "sentiment_app"),
+        "passwd": os.getenv("MYSQL_PASSWORD", ""),
+        "db": os.getenv("MYSQL_DATABASE", "smart_sentiment"),
+        "charset": "utf8mb4",
+        "use_unicode": True,
+        "connect_timeout": 10,
+    }
 
 
 def captured_faces_dir_from_env() -> Path:
@@ -73,7 +68,7 @@ def captured_faces_dir_from_env() -> Path:
 
 @dataclass(frozen=True)
 class Settings:
-    database_url: str = field(default_factory=database_url_from_env)
+    mysql_options: dict[str, object] = field(default_factory=mysql_options_from_env)
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     captured_faces_dir: Path = field(default_factory=captured_faces_dir_from_env)
 
@@ -92,8 +87,10 @@ class Settings:
     )
 
     def validate(self) -> None:
-        if not self.database_url:
-            raise RuntimeError("DATABASE_URL is required")
+        if not self.mysql_options["db"]:
+            raise RuntimeError("MYSQL_DATABASE is required")
+        if not self.mysql_options["user"]:
+            raise RuntimeError("MYSQL_USER is required")
         if not self.redis_url:
             raise RuntimeError("REDIS_URL is required")
         if self.max_upload_bytes < 1024:

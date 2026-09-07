@@ -1,17 +1,17 @@
-"""Small PostgreSQL data-access layer shared by the API and worker."""
+"""Small MySQL/MariaDB data-access layer shared by the API and worker."""
 
 from __future__ import annotations
 
-import secrets
 import json
+import secrets
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterator
 
 import numpy as np
-import psycopg2
-from psycopg2.extras import Json, RealDictCursor
+import MySQLdb
+from MySQLdb.cursors import DictCursor
 
 from .config import settings
 from .security import api_key_prefix, hash_api_key
@@ -25,10 +25,16 @@ class DeviceContext:
     pc_name: str
 
 
+def utc_now_for_database() -> datetime:
+    """Return naive UTC because MySQL/MariaDB DATETIME has no timezone offset."""
+
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 @contextmanager
 def database() -> Iterator[Any]:
     """Open a short-lived database connection and always close it."""
-    connection = psycopg2.connect(settings.database_url, connect_timeout=10)
+    connection = MySQLdb.connect(**settings.mysql_options)
     try:
         yield connection
         connection.commit()
@@ -44,15 +50,15 @@ def authenticate_device(token: str) -> DeviceContext | None:
     if not prefix:
         return None
 
-    with database() as db, db.cursor(cursor_factory=RealDictCursor) as cursor:
+    with database() as db, db.cursor(DictCursor) as cursor:
         cursor.execute(
             """
             SELECT d.id, d.branch_id, d.name, d.pc_name, d.api_key_hash
               FROM monitor_device d
               JOIN monitor_branch b ON b.id = d.branch_id
              WHERE d.api_key_prefix = %s
-               AND d.is_active = TRUE
-               AND b.is_active = TRUE
+               AND d.is_active = 1
+               AND b.is_active = 1
              LIMIT 1
             """,
             (prefix,),
@@ -63,7 +69,7 @@ def authenticate_device(token: str) -> DeviceContext | None:
 
         cursor.execute(
             "UPDATE monitor_device SET last_seen_at = %s WHERE id = %s",
-            (datetime.now(timezone.utc), row["id"]),
+            (utc_now_for_database(), row["id"]),
         )
         return DeviceContext(
             id=row["id"],
@@ -83,15 +89,14 @@ def insert_snapshot(
     session_id: str,
 ) -> int:
     with database() as db, db.cursor() as cursor:
-        now = datetime.now(timezone.utc)
+        now = utc_now_for_database()
         cursor.execute(
             """
             INSERT INTO captured_snapshots (
                 job_id, branch_id, device_id, pc_name, session_id,
                 image_path, upload_content_type, upload_size_bytes,
                 status, processed, timestamp
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'queued', FALSE, %s)
-            RETURNING id
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'queued', 0, %s)
             """,
             (
                 job_id,
@@ -105,11 +110,11 @@ def insert_snapshot(
                 now,
             ),
         )
-        return int(cursor.fetchone()[0])
+        return int(cursor.lastrowid)
 
 
 def get_snapshot(snapshot_id: int) -> dict[str, Any] | None:
-    with database() as db, db.cursor(cursor_factory=RealDictCursor) as cursor:
+    with database() as db, db.cursor(DictCursor) as cursor:
         cursor.execute(
             "SELECT * FROM captured_snapshots WHERE id = %s",
             (snapshot_id,),
@@ -119,7 +124,7 @@ def get_snapshot(snapshot_id: int) -> dict[str, Any] | None:
 
 
 def get_snapshot_for_device(job_id: str, device: DeviceContext) -> dict[str, Any] | None:
-    with database() as db, db.cursor(cursor_factory=RealDictCursor) as cursor:
+    with database() as db, db.cursor(DictCursor) as cursor:
         cursor.execute(
             """
             SELECT id, job_id, status, emotion, confidence, error_message,
@@ -153,11 +158,11 @@ def mark_failed(snapshot_id: int, error_message: str) -> None:
         cursor.execute(
             """
             UPDATE captured_snapshots
-               SET status = 'failed', processed = FALSE,
+               SET status = 'failed', processed = 0,
                    error_message = %s, processed_at = %s
              WHERE id = %s
             """,
-            (safe_message, datetime.now(timezone.utc), snapshot_id),
+            (safe_message, utc_now_for_database(), snapshot_id),
         )
 
 
@@ -167,20 +172,23 @@ def get_embeddings() -> list[tuple[int, str, np.ndarray]]:
             """
             SELECT v.id, v.face_id, s.embedding
               FROM monitor_visitor v
-              JOIN LATERAL (
-                    SELECT embedding
-                      FROM captured_snapshots cs
-                     WHERE cs.visitor_id = v.id
-                       AND cs.embedding IS NOT NULL
-                     ORDER BY cs.timestamp DESC
+              JOIN captured_snapshots s
+                ON s.id = (
+                    SELECT latest.id
+                      FROM captured_snapshots latest
+                     WHERE latest.visitor_id = v.id
+                       AND latest.embedding IS NOT NULL
+                     ORDER BY latest.timestamp DESC, latest.id DESC
                      LIMIT 1
-              ) s ON TRUE
+                )
             """
         )
         known: list[tuple[int, str, np.ndarray]] = []
         for visitor_id, face_id, value in cursor.fetchall():
             try:
                 embedding = value
+                if isinstance(value, bytes):
+                    value = value.decode("utf-8")
                 if isinstance(value, str):
                     embedding = json.loads(value)
                 known.append(
@@ -192,19 +200,19 @@ def get_embeddings() -> list[tuple[int, str, np.ndarray]]:
 
 
 def create_visitor(face_id: str) -> int:
-    now = datetime.now(timezone.utc)
+    now = utc_now_for_database()
     with database() as db, db.cursor() as cursor:
         cursor.execute(
             """
             INSERT INTO monitor_visitor (face_id, first_seen, last_seen)
             VALUES (%s, %s, %s)
-            ON CONFLICT (face_id)
-            DO UPDATE SET last_seen = EXCLUDED.last_seen
-            RETURNING id
+            ON DUPLICATE KEY UPDATE
+                id = LAST_INSERT_ID(id),
+                last_seen = VALUES(last_seen)
             """,
             (face_id, now, now),
         )
-        return int(cursor.fetchone()[0])
+        return int(cursor.lastrowid)
 
 
 def complete_snapshot(
@@ -218,7 +226,7 @@ def complete_snapshot(
     image_path: str | None,
 ) -> None:
     with database() as db, db.cursor() as cursor:
-        completed_at = datetime.now(timezone.utc)
+        completed_at = utc_now_for_database()
         cursor.execute(
             "UPDATE monitor_visitor SET last_seen = %s WHERE id = %s",
             (completed_at, visitor_id),
@@ -233,7 +241,7 @@ def complete_snapshot(
                    embedding = %s,
                    image_path = %s,
                    status = 'processed',
-                   processed = TRUE,
+                   processed = 1,
                    error_message = '',
                    processed_at = %s
              WHERE id = %s
@@ -242,8 +250,8 @@ def complete_snapshot(
                 visitor_id,
                 emotion,
                 confidence,
-                Json(emotion_vector),
-                Json(embedding) if embedding is not None else None,
+                json.dumps(emotion_vector),
+                json.dumps(embedding) if embedding is not None else None,
                 image_path,
                 completed_at,
                 snapshot_id,

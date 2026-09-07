@@ -6,6 +6,8 @@
 - Restored the polished SaaS dashboard presentation for the self-hosted edition,
   including the desktop sidebar, mobile navigation, analytics, reports, settings,
   and login experience, without restoring tenancy or billing behavior.
+- Replaced PostgreSQL-specific configuration and ingestion SQL with a shared
+  XAMPP MySQL/MariaDB database setup for Django, FastAPI, and the RQ worker.
 - Kept revocable per-device API keys and per-device rate limiting.
 - Made device PC names and visitor face IDs unique within the installation.
 - Added a migration that consolidates duplicate visitor identities and safely renames

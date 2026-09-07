@@ -23,7 +23,7 @@ responsive styling intentionally retain the SaaS edition's user experience.
 ## Architecture
 
 ```text
-Camera agent -> FastAPI ingestion -> PostgreSQL + Redis queue
+Camera agent -> FastAPI ingestion -> XAMPP MariaDB + Redis queue
                                            |
                                            v
                                   DeepFace RQ worker

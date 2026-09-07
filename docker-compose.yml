@@ -1,18 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-sentiment}
-      POSTGRES_USER: ${POSTGRES_USER:-sentiment}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sentiment} -d ${POSTGRES_DB:-sentiment}"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
   redis:
     image: redis:7-alpine
     command: redis-server --appendonly yes
@@ -30,18 +16,14 @@ services:
       dockerfile: Dockerfile.dashboard
     env_file: .env
     environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      DJANGO_USE_SQLITE: "false"
+      DATABASE_ENGINE: mysql
+      MYSQL_HOST: host.docker.internal
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,dashboard
       CAPTURED_FACES_DIR: /data/private_uploads
     ports:
       - "8000:8000"
     volumes:
       - private_uploads:/data/private_uploads
-    depends_on:
-      postgres:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3)"]
       interval: 10s
@@ -54,8 +36,7 @@ services:
       dockerfile: Dockerfile.api
     env_file: .env
     environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
+      MYSQL_HOST: host.docker.internal
       REDIS_URL: redis://redis:6379/0
       CAPTURED_FACES_DIR: /data/private_uploads
     ports:
@@ -75,8 +56,7 @@ services:
       dockerfile: Dockerfile.worker
     env_file: .env
     environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
+      MYSQL_HOST: host.docker.internal
       REDIS_URL: redis://redis:6379/0
       CAPTURED_FACES_DIR: /data/private_uploads
     volumes:
@@ -90,7 +70,6 @@ services:
     restart: on-failure
 
 volumes:
-  postgres_data:
   redis_data:
   private_uploads:
   model_cache:

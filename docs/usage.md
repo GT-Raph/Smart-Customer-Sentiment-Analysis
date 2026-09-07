@@ -3,16 +3,29 @@
 Python 3.10 is recommended because the pinned TensorFlow worker dependency targets
 that runtime.
 
-## Docker path
+## XAMPP database
 
-```bash
-cp .env.example .env
-# Set a random POSTGRES_PASSWORD and DJANGO_SECRET_KEY
-docker compose up --build
+Start MySQL in the XAMPP Control Panel, then create the database and a dedicated
+application account in the XAMPP shell:
+
+```sql
+CREATE DATABASE smart_sentiment
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'sentiment_app'@'localhost' IDENTIFIED BY 'choose-a-strong-password';
+GRANT ALL PRIVILEGES ON smart_sentiment.* TO 'sentiment_app'@'localhost';
+FLUSH PRIVILEGES;
 ```
 
-Then create an administrator, a branch, and a device key as described in
-`DEPLOYMENT.md`. No organization or subscription record is required.
+Copy `.env.example` to `.env`, put the same password in `MYSQL_PASSWORD`, and
+keep `MYSQL_HOST=127.0.0.1`. Never commit `.env`.
+
+The MariaDB 10.4 series bundled with many XAMPP releases is end-of-life and is
+below Django 5.2's officially supported MariaDB 10.5 minimum. The
+`XAMPP_ALLOW_MARIADB_10_4=true` compatibility option keeps local XAMPP working,
+but upgrading MariaDB is strongly recommended.
+
+Keep `DJANGO_TIME_ZONE=UTC` unless you load named time-zone tables into MariaDB.
+UTC and Ghana civil time have the same offset, so Accra timestamps are unchanged.
 
 ## Separate local environments
 
@@ -46,11 +59,10 @@ python manage.py migrate
 python manage.py runserver 8000
 ```
 
-With `DJANGO_DEBUG=true`, Django uses a local SQLite database by default so the
-dashboard can run without Docker or PostgreSQL. Run migrations before the first
-start. Set `DJANGO_USE_SQLITE=false` only when the configured PostgreSQL database
-is available. The ingestion API and worker still require PostgreSQL and Redis;
-use the Docker deployment for the complete multi-service system.
+With `DATABASE_ENGINE=mysql`, Django, the ingestion API, and the worker all use
+the XAMPP database. Run migrations before the first start. SQLite remains
+available only for isolated tests by setting `DATABASE_ENGINE=sqlite`; the API
+and worker require MySQL/MariaDB and Redis.
 
 ## Tests
 
@@ -58,7 +70,5 @@ use the Docker deployment for the complete multi-service system.
 python -m unittest discover -s tests -v
 
 cd emotion_dashboard
-DJANGO_DEBUG=true DJANGO_SECRET_KEY=test-only \
-DATABASE_URL=sqlite:////tmp/sentiment-tests.sqlite3 \
-python manage.py test monitor
+DATABASE_ENGINE=sqlite python manage.py test monitor
 ```

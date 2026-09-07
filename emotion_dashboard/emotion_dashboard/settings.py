@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
 
 from dotenv import load_dotenv
 
@@ -27,64 +26,33 @@ def env_list(name: str, default: str = "") -> list[str]:
     return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
 
 
-def database_from_url(url: str) -> dict[str, object]:
-    parsed = urlparse(url)
-    if parsed.scheme in {"sqlite", "sqlite3"}:
-        path = unquote(parsed.path)
-        if path in {"", "/"}:
-            path = str(BASE_DIR / "db.sqlite3")
-        return {"ENGINE": "django.db.backends.sqlite3", "NAME": path}
-    if parsed.scheme not in {"postgres", "postgresql"}:
-        raise RuntimeError("DATABASE_URL must be PostgreSQL or SQLite")
+def database_from_mysql_env() -> dict[str, object]:
+    """Build the XAMPP MySQL/MariaDB configuration from discrete values."""
 
-    query = parse_qs(parsed.query)
-    options: dict[str, str] = {}
-    if "sslmode" in query:
-        options["sslmode"] = query["sslmode"][0]
-
-    try:
-        port = parsed.port or 5432
-    except ValueError as exc:
-        raise RuntimeError(
-            "DATABASE_URL has an invalid port. Percent-encode reserved characters "
-            "in its password, or use the separate POSTGRES_* settings."
-        ) from exc
-
-    return {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": unquote(parsed.path.lstrip("/")),
-        "USER": unquote(parsed.username or ""),
-        "PASSWORD": unquote(parsed.password or ""),
-        "HOST": parsed.hostname or "",
-        "PORT": str(port),
-        "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "60")),
-        "OPTIONS": options,
-    }
-
-
-def database_from_postgres_env() -> dict[str, object]:
-    """Build Django's database config without putting credentials in a URL."""
-
-    port = os.getenv("POSTGRES_PORT", "5432")
+    port = os.getenv("MYSQL_PORT", "3306")
     try:
         int(port)
     except ValueError as exc:
-        raise RuntimeError("POSTGRES_PORT must be an integer") from exc
+        raise RuntimeError("MYSQL_PORT must be an integer") from exc
 
-    options: dict[str, str] = {}
-    sslmode = os.getenv("POSTGRES_SSLMODE", "")
-    if sslmode:
-        options["sslmode"] = sslmode
+    engine = (
+        "emotion_dashboard.xampp_mysql"
+        if env_bool("XAMPP_ALLOW_MARIADB_10_4", False)
+        else "django.db.backends.mysql"
+    )
 
     return {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("POSTGRES_DB", "sentiment"),
-        "USER": os.getenv("POSTGRES_USER", "sentiment"),
-        "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
-        "HOST": os.getenv("POSTGRES_HOST", "localhost"),
+        "ENGINE": engine,
+        "NAME": os.getenv("MYSQL_DATABASE", "smart_sentiment"),
+        "USER": os.getenv("MYSQL_USER", "sentiment_app"),
+        "PASSWORD": os.getenv("MYSQL_PASSWORD", ""),
+        "HOST": os.getenv("MYSQL_HOST", "127.0.0.1"),
         "PORT": port,
         "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "60")),
-        "OPTIONS": options,
+        "OPTIONS": {
+            "charset": "utf8mb4",
+            "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
+        },
     }
 
 
@@ -141,19 +109,21 @@ TEMPLATES = [
 WSGI_APPLICATION = "emotion_dashboard.wsgi.application"
 ASGI_APPLICATION = "emotion_dashboard.asgi.application"
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-database_scheme = urlparse(DATABASE_URL).scheme if DATABASE_URL else ""
-USE_SQLITE = env_bool("DJANGO_USE_SQLITE", DEBUG)
-if USE_SQLITE:
-    DATABASES = {"default": database_from_url(f"sqlite:///{BASE_DIR / 'db.sqlite3'}")}
-elif database_scheme in {"sqlite", "sqlite3"}:
-    DATABASES = {"default": database_from_url(DATABASE_URL)}
-elif os.getenv("POSTGRES_PASSWORD") is not None:
-    DATABASES = {"default": database_from_postgres_env()}
-elif DATABASE_URL:
-    DATABASES = {"default": database_from_url(DATABASE_URL)}
+DATABASE_ENGINE = os.getenv(
+    "DATABASE_ENGINE",
+    "sqlite" if DEBUG else "mysql",
+).strip().lower()
+if DATABASE_ENGINE == "sqlite":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
+elif DATABASE_ENGINE in {"mysql", "mariadb", "xampp"}:
+    DATABASES = {"default": database_from_mysql_env()}
 else:
-    raise RuntimeError("Database configuration is required when DJANGO_DEBUG is false")
+    raise RuntimeError("DATABASE_ENGINE must be 'mysql' or 'sqlite'")
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

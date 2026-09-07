@@ -6,7 +6,9 @@ monthly usage data while retaining branches, users, devices, visitors, and snaps
 
 Before migration:
 
-1. Back up PostgreSQL and verify the backup can be restored.
+1. Back up the existing database and verify the backup can be restored. Moving
+   from PostgreSQL to XAMPP requires a reviewed data export/import; Django schema
+   migrations create the tables but do not copy data between database engines.
 2. Stop the API and worker so no snapshots are created during migration.
 3. Confirm that every normal dashboard user is assigned to the correct branch.
 4. Run `python manage.py migrate` from `emotion_dashboard/`.

@@ -14,7 +14,7 @@ record in Django admin.
 
 ## `GET /health`
 
-Checks PostgreSQL and Redis. It returns HTTP 503 when either dependency is down.
+Checks XAMPP MySQL/MariaDB and Redis. It returns HTTP 503 when either dependency is down.
 
 ## `POST /v1/snapshots`
 

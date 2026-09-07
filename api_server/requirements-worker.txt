@@ -2,7 +2,7 @@ opencv-python-headless==4.11.0.86
 numpy==1.24.3
 Pillow>=10,<13
 ulid-py==1.1.0
-psycopg2-binary==2.9.11
+mysqlclient==2.2.8
 python-dotenv>=1.0,<2
 redis>=5,<7
 rq>=2,<3
