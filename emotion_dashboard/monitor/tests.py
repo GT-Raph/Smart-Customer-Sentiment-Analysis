@@ -72,3 +72,36 @@ class DeviceKeyCommandTests(TestCase):
             hashlib.sha256(token.encode("utf-8")).hexdigest(),
         )
         self.assertNotEqual(device.api_key_hash, token)
+
+
+class DashboardUiSmokeTests(TestCase):
+    def setUp(self):
+        self.branch = Branch.objects.create(name="Accra", pc_prefix="ACC001")
+        self.admin = CustomUser.objects.create_superuser(
+            username="admin",
+            email="admin@example.com",
+            password="safe-pass-123",
+        )
+
+    def test_public_login_page_uses_existing_saas_style_template(self):
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "registration/login.html")
+
+    def test_authenticated_dashboard_pages_keep_rendering(self):
+        self.client.force_login(self.admin)
+        routes_and_templates = {
+            "/dashboard/": "monitor/dashboard.html",
+            "/branches/": "monitor/branch_overview.html",
+            "/reports/": "monitor/reports.html",
+            "/settings/": "monitor/settings.html",
+            f"/branch/{self.branch.pk}/": "monitor/branch_detail.html",
+            "/emotion-analytics/": "monitor/emotion_analytics.html",
+        }
+
+        for route, template in routes_and_templates.items():
+            with self.subTest(route=route):
+                response = self.client.get(route)
+                self.assertEqual(response.status_code, 200)
+                self.assertTemplateUsed(response, template)

@@ -440,7 +440,7 @@ def branch_overview(request):
     else:  # default to week
         days = 7
 
-    end_date = datetime.now()
+    end_date = timezone.now()
     start_date = end_date - timedelta(days=days-1)
     date_labels = [(start_date + timedelta(days=i)).strftime('%b %d') for i in range(days)]
 

@@ -17,6 +17,8 @@ for access control and comparison reports.
 
 Device API keys, authenticated dashboard users, upload limits, and privacy controls
 remain in place because they are security features rather than SaaS features.
+The dashboard templates, navigation, analytics pages, charts, branding, and
+responsive styling intentionally retain the SaaS edition's user experience.
 
 ## Architecture
 
