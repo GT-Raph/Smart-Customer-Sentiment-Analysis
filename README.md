@@ -38,6 +38,77 @@ All server-side components read the root `.env` file. Password punctuation is
 handled safely by the separate `DB_*` settings; no manually assembled database
 URL is required.
 
+## Run the system on Windows
+
+Run these setup commands once from the repository root:
+
+```powershell
+py -3.10 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+```
+
+Fill `.env` with the Django, Supabase, face-analysis, and bank-client values
+before continuing. The copy command preserves an existing `.env` file.
+
+Open three PowerShell terminals in the repository root and activate `.venv` in
+each terminal.
+
+### Terminal 1: Django dashboard
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+cd emotion_dashboard
+python manage.py migrate
+python manage.py runserver 8000
+```
+
+Open `http://127.0.0.1:8000/` in your browser.
+
+To create the first platform administrator, run this from the
+`emotion_dashboard` directory:
+
+```powershell
+python manage.py createsuperuser
+```
+
+### Terminal 2: FastAPI face-analysis service
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn api_server.face_api:app --host 127.0.0.1 --port 8001
+```
+
+The API health check is available at `http://127.0.0.1:8001/health`.
+
+### Terminal 3: Teller camera client
+
+Run the full desktop capture client:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python desktop_capture.py
+```
+
+Alternatively, run the smaller reference client:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python clients\device_agent.py
+```
+
+Run only one camera client at a time. Its Windows computer name must match an
+active branch PC prefix configured in the Django admin.
+
+### Optional: Docker
+
+After configuring `.env`, Django and FastAPI can instead be started with:
+
+```powershell
+docker compose up --build
+```
+
 ## Main components
 
 - `emotion_dashboard/`: Django SaaS dashboard, admin, tenancy, and migrations.
