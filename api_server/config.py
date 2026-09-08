@@ -16,10 +16,8 @@ from urllib.parse import quote, urlparse
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SAAS_ENV_FILE = Path(
-    os.getenv("SAAS_ENV_FILE", str(PROJECT_ROOT / ".env.saas"))
-).expanduser()
-load_dotenv(SAAS_ENV_FILE)
+ENV_FILE = Path(os.getenv("APP_ENV_FILE", str(PROJECT_ROOT / ".env"))).expanduser()
+load_dotenv(ENV_FILE)
 
 
 def _as_bool(name: str, default: bool = False) -> bool:
@@ -41,6 +39,16 @@ def _as_float(name: str, default: float) -> float:
         return float(os.getenv(name, str(default)))
     except ValueError as exc:
         raise RuntimeError(f"{name} must be a number") from exc
+
+
+def _captured_faces_dir() -> Path:
+    default = PROJECT_ROOT / "private_uploads"
+    configured = os.getenv("CAPTURED_FACES_DIR", str(default)).strip()
+    # /data/private_uploads is the Docker volume path. On Windows, pathlib
+    # interprets it as C:\data\private_uploads, which is usually not writable.
+    if os.name == "nt" and configured.replace("\\", "/").startswith("/data/"):
+        return default.resolve()
+    return Path(configured).expanduser().resolve()
 
 
 def database_url_from_environment(
@@ -98,12 +106,7 @@ def database_url_from_environment(
 class Settings:
     database_url: str = database_url_from_environment()
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    captured_faces_dir: Path = Path(
-        os.getenv(
-            "CAPTURED_FACES_DIR",
-            str(Path(__file__).resolve().parent.parent / "private_uploads"),
-        )
-    ).resolve()
+    captured_faces_dir: Path = _captured_faces_dir()
 
     api_key_header: str = "X-API-Key"
     max_upload_bytes: int = _as_int("MAX_UPLOAD_BYTES", 5 * 1024 * 1024)
@@ -123,7 +126,7 @@ class Settings:
         if not self.database_url:
             raise RuntimeError(
                 "Supabase database configuration is required. Set SUPABASE_DB_URL "
-                "or the SUPABASE_DB_* variables in .env.saas."
+                "or the SUPABASE_DB_* variables in .env."
             )
         parsed = urlparse(self.database_url)
         if parsed.scheme not in {"postgres", "postgresql"}:

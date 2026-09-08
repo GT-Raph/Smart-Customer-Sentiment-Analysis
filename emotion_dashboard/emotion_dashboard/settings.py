@@ -15,14 +15,8 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = BASE_DIR.parent
-
-# Keep the SaaS and non-SaaS branch settings independent. The non-SaaS branch
-# uses .env for XAMPP; main deliberately uses .env.saas so switching branches
-# cannot silently point the SaaS application at the local MariaDB database.
-SAAS_ENV_FILE = Path(
-    os.getenv("SAAS_ENV_FILE", str(PROJECT_ROOT / ".env.saas"))
-).expanduser()
-load_dotenv(SAAS_ENV_FILE)
+ENV_FILE = Path(os.getenv("APP_ENV_FILE", str(PROJECT_ROOT / ".env"))).expanduser()
+load_dotenv(ENV_FILE)
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -125,7 +119,7 @@ def database_from_environment() -> dict[str, object]:
 
     raise RuntimeError(
         "Supabase database configuration is required. Set SUPABASE_DB_URL "
-        "or the SUPABASE_DB_* variables in .env.saas."
+        "or the SUPABASE_DB_* variables in .env."
     )
 
 

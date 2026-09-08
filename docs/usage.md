@@ -6,7 +6,7 @@ built for that runtime.
 ## Docker path
 
 ```bash
-cp .env.example .env.saas
+cp .env.example .env
 # Paste the Supabase Session pooler URL and set a random DJANGO_SECRET_KEY
 docker compose up --build
 ```
@@ -52,7 +52,7 @@ python manage.py migrate
 python manage.py runserver 8000
 ```
 
-All three server-side processes read `.env.saas`. The desktop client connects
+All three server-side processes read `.env`. The desktop client connects
 to the ingestion API and never connects directly to Supabase.
 
 ## Tests

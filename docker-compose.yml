@@ -14,7 +14,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dashboard
-    env_file: ${COMPOSE_SAAS_ENV_FILE:-.env.saas}
+    env_file: .env
     environment:
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,dashboard
     ports:
@@ -29,7 +29,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
-    env_file: ${COMPOSE_SAAS_ENV_FILE:-.env.saas}
+    env_file: .env
     environment:
       REDIS_URL: redis://redis:6379/0
       CAPTURED_FACES_DIR: /data/private_uploads
@@ -48,7 +48,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    env_file: ${COMPOSE_SAAS_ENV_FILE:-.env.saas}
+    env_file: .env
     environment:
       REDIS_URL: redis://redis:6379/0
       CAPTURED_FACES_DIR: /data/private_uploads

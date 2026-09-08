@@ -2,13 +2,12 @@
 
 ## Supabase configuration
 
-The SaaS branch deliberately reads `.env.saas`, not `.env`. This keeps its
-Supabase credentials separate from the XAMPP settings used by the `non-saas`
-branch.
+The active branch reads its configuration from the root `.env` file. On
+`main`, that file must contain the Supabase settings shown in `.env.example`.
 
 1. In the Supabase dashboard, open **Connect** and copy the Session pooler
    connection string (port `5432`) for a persistent Django/API deployment.
-2. Copy `.env.example` to `.env.saas`.
+2. Copy `.env.example` to `.env`.
 3. Put the connection string in `SUPABASE_DB_URL`, retain
    `?sslmode=require`, and replace the other placeholder secrets.
 
@@ -29,14 +28,14 @@ an authentication, DNS, SSL, or migration error.
 ## Local Docker development
 
 ```bash
-cp .env.example .env.saas
-# Add the Supabase connection and replace DJANGO_SECRET_KEY in .env.saas
+cp .env.example .env
+# Add the Supabase connection and replace DJANGO_SECRET_KEY in .env
 docker compose up --build
 ```
 
 Docker Compose runs Redis locally, but it does not create or override the
 PostgreSQL database. Django, FastAPI, and the worker all receive the same
-Supabase configuration from `.env.saas`.
+Supabase configuration from `.env`.
 
 Create the first administrator:
 

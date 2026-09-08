@@ -39,7 +39,7 @@ Device agent -> FastAPI ingestion -> PostgreSQL job + Redis queue
 
 ## Quick start
 
-Copy `.env.example` to `.env.saas`, paste the Session pooler connection details
+Copy `.env.example` to `.env`, paste the Session pooler connection details
 from the Supabase **Connect** panel, and then follow
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Existing prototype databases
 should follow [docs/MIGRATION_GUIDE.md](docs/MIGRATION_GUIDE.md).
