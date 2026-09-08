@@ -101,6 +101,14 @@ python clients\device_agent.py
 Run only one camera client at a time. Its Windows computer name must match an
 active branch PC prefix configured in the Django admin.
 
+If an older environment reports that `cv2` has no `CascadeClassifier`, remove
+the conflicting OpenCV variants and reinstall the pinned version:
+
+```powershell
+python -m pip uninstall -y opencv-python opencv-python-headless
+python -m pip install -r requirements.txt
+```
+
 ### Optional: Docker
 
 After configuring `.env`, Django and FastAPI can instead be started with:
