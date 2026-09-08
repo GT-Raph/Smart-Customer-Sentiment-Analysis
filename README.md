@@ -3,7 +3,9 @@
 A SaaS-ready foundation for privacy-conscious facial-expression analytics. The
 system receives a cropped face from a registered device, queues analysis, runs
 DeepFace in a separate worker, and displays processed aggregate results in a
-Django dashboard.
+Django dashboard. The `main` branch uses one hosted Supabase PostgreSQL database
+for the dashboard, ingestion API, and worker; the separate `non-saas` branch is
+not merged into it.
 
 > The output is a facial-expression signal, not proof of a person's true
 > emotion. Face identification is disabled by default.
@@ -37,7 +39,9 @@ Device agent -> FastAPI ingestion -> PostgreSQL job + Redis queue
 
 ## Quick start
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Existing prototype databases
+Copy `.env.example` to `.env.saas`, paste the Session pooler connection details
+from the Supabase **Connect** panel, and then follow
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Existing prototype databases
 should follow [docs/MIGRATION_GUIDE.md](docs/MIGRATION_GUIDE.md).
 
 ## Main services

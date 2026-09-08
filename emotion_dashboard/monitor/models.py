@@ -99,11 +99,14 @@ class CustomUser(AbstractUser):
 
     def clean(self) -> None:
         super().clean()
-        if self.branch_id and self.organization_id:
-            if self.branch.organization_id != self.organization_id:
-                from django.core.exceptions import ValidationError
+        if self.branch_id and not self.organization_id:
+            from django.core.exceptions import ValidationError
 
-                raise ValidationError("The selected branch belongs to another organization.")
+            raise ValidationError("An organization is required when a branch is assigned.")
+        if self.branch_id and self.branch.organization_id != self.organization_id:
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError("The selected branch belongs to another organization.")
 
 
 class UserProfile(models.Model):

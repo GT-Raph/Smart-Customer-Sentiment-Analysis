@@ -7,13 +7,22 @@ All deployment-specific values come from environment variables. See the root
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR.parent / ".env")
+PROJECT_ROOT = BASE_DIR.parent
+
+# Keep the SaaS and non-SaaS branch settings independent. The non-SaaS branch
+# uses .env for XAMPP; main deliberately uses .env.saas so switching branches
+# cannot silently point the SaaS application at the local MariaDB database.
+SAAS_ENV_FILE = Path(
+    os.getenv("SAAS_ENV_FILE", str(PROJECT_ROOT / ".env.saas"))
+).expanduser()
+load_dotenv(SAAS_ENV_FILE)
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -31,27 +40,93 @@ def database_from_url(url: str) -> dict[str, object]:
     parsed = urlparse(url)
     if parsed.scheme in {"sqlite", "sqlite3"}:
         path = unquote(parsed.path)
+        if os.name == "nt" and re.match(r"^/[A-Za-z]:/", path):
+            path = path[1:]
         if path in {"", "/"}:
             path = str(BASE_DIR / "db.sqlite3")
         return {"ENGINE": "django.db.backends.sqlite3", "NAME": path}
     if parsed.scheme not in {"postgres", "postgresql"}:
-        raise RuntimeError("DATABASE_URL must be PostgreSQL or SQLite")
+        raise RuntimeError("SUPABASE_DB_URL/DATABASE_URL must be PostgreSQL or SQLite")
+
+    try:
+        port = parsed.port or 5432
+    except ValueError as exc:
+        raise RuntimeError(
+            "The database URL contains an invalid port. Copy the connection "
+            "string from Supabase Connect and URL-encode special characters "
+            "in the password."
+        ) from exc
+
+    database_name = unquote(parsed.path.lstrip("/"))
+    if not parsed.hostname or not parsed.username or not database_name:
+        raise RuntimeError("The PostgreSQL database URL is incomplete")
 
     query = parse_qs(parsed.query)
     options: dict[str, str] = {}
     if "sslmode" in query:
         options["sslmode"] = query["sslmode"][0]
+    elif parsed.hostname.endswith(("supabase.co", "supabase.com")):
+        options["sslmode"] = "require"
+
+    for option_name in ("sslrootcert", "connect_timeout", "application_name"):
+        if option_name in query:
+            options[option_name] = query[option_name][0]
 
     return {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": unquote(parsed.path.lstrip("/")),
+        "NAME": database_name,
         "USER": unquote(parsed.username or ""),
         "PASSWORD": unquote(parsed.password or ""),
         "HOST": parsed.hostname or "",
-        "PORT": str(parsed.port or 5432),
+        "PORT": str(port),
         "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "60")),
+        "CONN_HEALTH_CHECKS": True,
         "OPTIONS": options,
     }
+
+
+def database_from_environment() -> dict[str, object]:
+    database_url = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
+    if database_url:
+        return database_from_url(database_url)
+
+    names = {
+        "NAME": "SUPABASE_DB_NAME",
+        "USER": "SUPABASE_DB_USER",
+        "PASSWORD": "SUPABASE_DB_PASSWORD",
+        "HOST": "SUPABASE_DB_HOST",
+        "PORT": "SUPABASE_DB_PORT",
+    }
+    supplied = {key: os.getenv(env_name, "").strip() for key, env_name in names.items()}
+    supplied["PASSWORD"] = os.getenv("SUPABASE_DB_PASSWORD", "")
+    if any(supplied.values()):
+        missing = [env_name for key, env_name in names.items() if not supplied[key]]
+        if missing:
+            raise RuntimeError(
+                "Incomplete Supabase database configuration; missing " + ", ".join(missing)
+            )
+        try:
+            port = int(supplied["PORT"])
+        except ValueError as exc:
+            raise RuntimeError("SUPABASE_DB_PORT must be an integer") from exc
+        if not 1 <= port <= 65535:
+            raise RuntimeError("SUPABASE_DB_PORT must be between 1 and 65535")
+        return {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": supplied["NAME"],
+            "USER": supplied["USER"],
+            "PASSWORD": supplied["PASSWORD"],
+            "HOST": supplied["HOST"],
+            "PORT": str(port),
+            "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "60")),
+            "CONN_HEALTH_CHECKS": True,
+            "OPTIONS": {"sslmode": os.getenv("SUPABASE_DB_SSLMODE", "require")},
+        }
+
+    raise RuntimeError(
+        "Supabase database configuration is required. Set SUPABASE_DB_URL "
+        "or the SUPABASE_DB_* variables in .env.saas."
+    )
 
 
 DEBUG = env_bool("DJANGO_DEBUG", False)
@@ -106,13 +181,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "emotion_dashboard.wsgi.application"
 ASGI_APPLICATION = "emotion_dashboard.asgi.application"
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    if DEBUG:
-        DATABASE_URL = f"sqlite:///{BASE_DIR / 'db.sqlite3'}"
-    else:
-        raise RuntimeError("DATABASE_URL is required when DJANGO_DEBUG is false")
-DATABASES = {"default": database_from_url(DATABASE_URL)}
+DATABASES = {"default": database_from_environment()}
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

@@ -64,6 +64,7 @@ def authenticate_device(token: str) -> DeviceContext | None:
                AND o.is_active = TRUE
                AND o.subscription_status IN ('trialing', 'active')
                AND b.is_active = TRUE
+               AND b.organization_id = d.organization_id
              LIMIT 1
             """,
             (prefix,),

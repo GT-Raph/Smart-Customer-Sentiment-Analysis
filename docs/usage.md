@@ -6,8 +6,8 @@ built for that runtime.
 ## Docker path
 
 ```bash
-cp .env.example .env
-# Set a random POSTGRES_PASSWORD and DJANGO_SECRET_KEY
+cp .env.example .env.saas
+# Paste the Supabase Session pooler URL and set a random DJANGO_SECRET_KEY
 docker compose up --build
 ```
 
@@ -51,6 +51,9 @@ Start Django from `emotion_dashboard/`:
 python manage.py migrate
 python manage.py runserver 8000
 ```
+
+All three server-side processes read `.env.saas`. The desktop client connects
+to the ingestion API and never connects directly to Supabase.
 
 ## Tests
 

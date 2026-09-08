@@ -117,19 +117,19 @@ def dashboard(request):
         else:
             total_visitors_today = snapshot_queryset().filter(
                 timestamp__date=today,
-                pc_name__startswith=user_pc_prefix
+                branch__pc_prefix=user_pc_prefix
             ).values("visitor__face_id").distinct().count()
     else:
         user_pc_prefix = get_user_pc_prefix(request.user)
         total_visitors_today = snapshot_queryset().filter(
             timestamp__date=today,
-            pc_name__startswith=user_pc_prefix
+            branch__pc_prefix=user_pc_prefix
         ).values("visitor__face_id").distinct().count()
 
     # ✅ Top emotion today
     emotion_counts_today = snapshot_queryset().filter(timestamp__date=today)
     if user_pc_prefix:
-        emotion_counts_today = emotion_counts_today.filter(pc_name__startswith=user_pc_prefix)
+        emotion_counts_today = emotion_counts_today.filter(branch__pc_prefix=user_pc_prefix)
     emotion_counts_today = (
         emotion_counts_today
         .values("emotion")
@@ -228,7 +228,7 @@ def get_emotion_data(pc_prefix, start_date, end_date):
     
     # Apply PC prefix filter if provided
     if pc_prefix:
-        query = query.filter(pc_name__startswith=pc_prefix)
+        query = query.filter(branch__pc_prefix=pc_prefix)
     
     # Get total visitors (unique face_ids)
     total_visitors = query.values('visitor__face_id').distinct().count()
@@ -297,7 +297,7 @@ def get_trend_data(pc_prefix, start_date, end_date):
             )
             
             if pc_prefix:
-                query = query.filter(pc_name__startswith=pc_prefix)
+                query = query.filter(branch__pc_prefix=pc_prefix)
             
             count = query.count()
             daily_counts.append(count)
@@ -336,7 +336,7 @@ def get_hourly_data(pc_prefix, range_type):
                 emotion=emotion
             )
             if pc_prefix:
-                query = query.filter(pc_name__startswith=pc_prefix)
+                query = query.filter(branch__pc_prefix=pc_prefix)
             count = query.count()
             hourly_counts.append(count)
         
@@ -380,13 +380,13 @@ def calculate_growth(pc_prefix):
     # Get today's count
     query_today = snapshot_queryset().filter(timestamp__date=today)
     if pc_prefix:
-        query_today = query_today.filter(pc_name__startswith=pc_prefix)
+        query_today = query_today.filter(branch__pc_prefix=pc_prefix)
     today_count = query_today.values('visitor__face_id').distinct().count()
     
     # Get yesterday's count
     query_yesterday = snapshot_queryset().filter(timestamp__date=yesterday)
     if pc_prefix:
-        query_yesterday = query_yesterday.filter(pc_name__startswith=pc_prefix)
+        query_yesterday = query_yesterday.filter(branch__pc_prefix=pc_prefix)
     yesterday_count = query_yesterday.values('visitor__face_id').distinct().count()
     
     if yesterday_count == 0:
@@ -408,7 +408,7 @@ def calculate_negative_growth(pc_prefix):
         emotion__in=['sad', 'angry']
     )
     if pc_prefix:
-        query_today = query_today.filter(pc_name__startswith=pc_prefix)
+        query_today = query_today.filter(branch__pc_prefix=pc_prefix)
     today_negative = query_today.count()
     
     # Get yesterday's negative emotions (neutral is NOT negative)
@@ -417,7 +417,7 @@ def calculate_negative_growth(pc_prefix):
         emotion__in=['sad', 'angry']
     )
     if pc_prefix:
-        query_yesterday = query_yesterday.filter(pc_name__startswith=pc_prefix)
+        query_yesterday = query_yesterday.filter(branch__pc_prefix=pc_prefix)
     yesterday_negative = query_yesterday.count()
     
     if yesterday_negative == 0:
@@ -440,7 +440,7 @@ def branch_overview(request):
     else:  # default to week
         days = 7
 
-    end_date = datetime.now()
+    end_date = timezone.now()
     start_date = end_date - timedelta(days=days-1)
     date_labels = [(start_date + timedelta(days=i)).strftime('%b %d') for i in range(days)]
 
@@ -464,16 +464,14 @@ def branch_overview(request):
     ]
 
     for idx, branch in enumerate(branches):
-        pc_prefix = branch.pc_prefix
-
         visitor_count = snapshot_queryset().filter(
-            pc_name__startswith=pc_prefix,
+            branch=branch,
             timestamp__range=(start_date, end_date)
         ).values('visitor__face_id').distinct().count()
 
         emotion_counts = (
             snapshot_queryset().filter(
-                pc_name__startswith=pc_prefix,
+                branch=branch,
                 timestamp__range=(start_date, end_date)
             )
             .values('emotion')
@@ -491,7 +489,7 @@ def branch_overview(request):
         for date_str in [(start_date + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(days)]:
             date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
             qs = snapshot_queryset().filter(
-                pc_name__startswith=pc_prefix,
+                branch=branch,
                 timestamp__date=date_obj
             )
             pos = qs.filter(emotion='happy').count()
@@ -567,19 +565,17 @@ def branch_detail(request, branch_id):
             from django.http import HttpResponseForbidden
             return HttpResponseForbidden("You do not have permission to view this branch.")
 
-    pc_prefix = branch.pc_prefix
-
     # Get recent visits
     visits = snapshot_queryset().filter(
-        pc_name__startswith=pc_prefix
+        branch=branch
     ).select_related('visitor').order_by('-timestamp')[:20]
     
-    total_emotions = snapshot_queryset().filter(pc_name__startswith=pc_prefix).count()
+    total_emotions = snapshot_queryset().filter(branch=branch).count()
 
     # Get emotion distribution
     from django.db.models import Count
     emotion_dist = (
-        snapshot_queryset().filter(pc_name__startswith=pc_prefix)
+        snapshot_queryset().filter(branch=branch)
         .values('emotion')
         .annotate(count=Count('id'))
         .order_by('-count')
@@ -618,7 +614,7 @@ def branch_detail(request, branch_id):
     for hour in hours:
         # Get visits for this hour
         hour_visits = snapshot_queryset().filter(
-            pc_name__startswith=pc_prefix,
+            branch=branch,
             timestamp__hour=hour
         )
         

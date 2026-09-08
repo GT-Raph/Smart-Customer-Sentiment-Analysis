@@ -97,13 +97,14 @@
             </li>
             {% if request.user.is_superuser %}
             <li>
-                <a href="{% url 'branch_overview' %}" class="{% if request.resolver_match.url_name == 'branch_overview' %}active{% endif %}">
+                <a href="{% url 'branch_overview' %}" class="{% if request.resolver_match.url_name == 'branch_overview' or request.resolver_match.url_name == 'branch_detail' %}active{% endif %}">
                     <i class="bi bi-building"></i> Branches
                 </a>
             </li>
+            {% elif request.user.branch_id %}
             <li>
-                <a href="{% url 'branch_detail' branch_id=1 %}" class="{% if request.resolver_match.url_name == 'branch_detail' %}active{% endif %}">
-                    <i class="bi bi-info-circle"></i> Branch Details
+                <a href="{% url 'branch_detail' branch_id=request.user.branch_id %}" class="{% if request.resolver_match.url_name == 'branch_detail' %}active{% endif %}">
+                    <i class="bi bi-geo-alt"></i> My Branch
                 </a>
             </li>
             {% endif %}

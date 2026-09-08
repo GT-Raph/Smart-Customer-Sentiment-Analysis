@@ -10,10 +10,16 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Mapping
+from urllib.parse import quote, urlparse
 
 from dotenv import load_dotenv
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SAAS_ENV_FILE = Path(
+    os.getenv("SAAS_ENV_FILE", str(PROJECT_ROOT / ".env.saas"))
+).expanduser()
+load_dotenv(SAAS_ENV_FILE)
 
 
 def _as_bool(name: str, default: bool = False) -> bool:
@@ -37,9 +43,60 @@ def _as_float(name: str, default: float) -> float:
         raise RuntimeError(f"{name} must be a number") from exc
 
 
+def database_url_from_environment(
+    environment: Mapping[str, str] | None = None,
+) -> str:
+    env = os.environ if environment is None else environment
+    database_url = env.get("SUPABASE_DB_URL", "").strip() or env.get(
+        "DATABASE_URL", ""
+    ).strip()
+    if database_url:
+        parsed = urlparse(database_url)
+        if (
+            parsed.hostname
+            and parsed.hostname.endswith(("supabase.co", "supabase.com"))
+            and "sslmode=" not in parsed.query
+        ):
+            separator = "&" if parsed.query else "?"
+            database_url = f"{database_url}{separator}sslmode=require"
+        return database_url
+
+    field_names = (
+        "SUPABASE_DB_NAME",
+        "SUPABASE_DB_USER",
+        "SUPABASE_DB_PASSWORD",
+        "SUPABASE_DB_HOST",
+        "SUPABASE_DB_PORT",
+    )
+    values = {name: env.get(name, "").strip() for name in field_names}
+    values["SUPABASE_DB_PASSWORD"] = env.get("SUPABASE_DB_PASSWORD", "")
+    if not any(values.values()):
+        return ""
+    missing = [name for name, value in values.items() if not value]
+    if missing:
+        raise RuntimeError(
+            "Incomplete Supabase database configuration; missing " + ", ".join(missing)
+        )
+    try:
+        port = int(values["SUPABASE_DB_PORT"])
+    except ValueError as exc:
+        raise RuntimeError("SUPABASE_DB_PORT must be an integer") from exc
+    if not 1 <= port <= 65535:
+        raise RuntimeError("SUPABASE_DB_PORT must be between 1 and 65535")
+
+    sslmode = env.get("SUPABASE_DB_SSLMODE", "require").strip() or "require"
+    user = quote(values["SUPABASE_DB_USER"], safe="")
+    password = quote(values["SUPABASE_DB_PASSWORD"], safe="")
+    database = quote(values["SUPABASE_DB_NAME"], safe="")
+    return (
+        f"postgresql://{user}:{password}@{values['SUPABASE_DB_HOST']}:{port}/"
+        f"{database}?sslmode={quote(sslmode, safe='')}"
+    )
+
+
 @dataclass(frozen=True)
 class Settings:
-    database_url: str = os.getenv("DATABASE_URL", "")
+    database_url: str = database_url_from_environment()
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     captured_faces_dir: Path = Path(
         os.getenv(
@@ -64,7 +121,22 @@ class Settings:
 
     def validate(self) -> None:
         if not self.database_url:
-            raise RuntimeError("DATABASE_URL is required")
+            raise RuntimeError(
+                "Supabase database configuration is required. Set SUPABASE_DB_URL "
+                "or the SUPABASE_DB_* variables in .env.saas."
+            )
+        parsed = urlparse(self.database_url)
+        if parsed.scheme not in {"postgres", "postgresql"}:
+            raise RuntimeError("The ingestion API requires a PostgreSQL database URL")
+        try:
+            parsed.port
+        except ValueError as exc:
+            raise RuntimeError(
+                "The database URL contains an invalid port. URL-encode special "
+                "characters in the password."
+            ) from exc
+        if not parsed.hostname or not parsed.username or not parsed.path.lstrip("/"):
+            raise RuntimeError("The PostgreSQL database URL is incomplete")
         if not self.redis_url:
             raise RuntimeError("REDIS_URL is required")
         if self.max_upload_bytes < 1024:

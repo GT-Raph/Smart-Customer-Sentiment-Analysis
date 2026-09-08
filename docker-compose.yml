@@ -1,18 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-sentiment}
-      POSTGRES_USER: ${POSTGRES_USER:-sentiment}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sentiment} -d ${POSTGRES_DB:-sentiment}"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
   redis:
     image: redis:7-alpine
     command: redis-server --appendonly yes
@@ -28,15 +14,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dashboard
-    env_file: .env
+    env_file: ${COMPOSE_SAAS_ENV_FILE:-.env.saas}
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-sentiment}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sentiment}
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,dashboard
     ports:
       - "8000:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3)"]
       interval: 10s
@@ -47,9 +29,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
-    env_file: .env
+    env_file: ${COMPOSE_SAAS_ENV_FILE:-.env.saas}
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-sentiment}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sentiment}
       REDIS_URL: redis://redis:6379/0
       CAPTURED_FACES_DIR: /data/private_uploads
     ports:
@@ -67,9 +48,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    env_file: .env
+    env_file: ${COMPOSE_SAAS_ENV_FILE:-.env.saas}
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-sentiment}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sentiment}
       REDIS_URL: redis://redis:6379/0
       CAPTURED_FACES_DIR: /data/private_uploads
     volumes:
@@ -83,7 +63,6 @@ services:
     restart: on-failure
 
 volumes:
-  postgres_data:
   redis_data:
   private_uploads:
   model_cache:

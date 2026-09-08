@@ -7,7 +7,7 @@ Reference camera client
         v
 FastAPI ingestion service
         |-- validates image and rate limit
-        |-- writes queued job to PostgreSQL
+        |-- writes queued job to Supabase PostgreSQL
         `-- enqueues job in Redis/RQ
                     |
                     v
@@ -31,7 +31,8 @@ Django SaaS dashboard/admin
 - FastAPI handles ingestion only and does not load TensorFlow.
 - The worker performs model inference and keeps models warm in a long-lived
   process.
-- Redis is transient job infrastructure; PostgreSQL is the job/result record.
+- Redis is transient job infrastructure; Supabase PostgreSQL is the shared
+  SaaS job/result record for Django, FastAPI, and the worker.
 - Local shared storage is supported for one-host deployment. Multi-host
   production requires private object storage.
 

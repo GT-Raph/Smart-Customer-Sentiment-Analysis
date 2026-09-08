@@ -1,12 +1,42 @@
 # Deployment
 
+## Supabase configuration
+
+The SaaS branch deliberately reads `.env.saas`, not `.env`. This keeps its
+Supabase credentials separate from the XAMPP settings used by the `non-saas`
+branch.
+
+1. In the Supabase dashboard, open **Connect** and copy the Session pooler
+   connection string (port `5432`) for a persistent Django/API deployment.
+2. Copy `.env.example` to `.env.saas`.
+3. Put the connection string in `SUPABASE_DB_URL`, retain
+   `?sslmode=require`, and replace the other placeholder secrets.
+
+If the database password contains URL punctuation, either URL-encode it or use
+the separate `SUPABASE_DB_*` variables shown in `.env.example`.
+
+Before starting the services, verify the connection and apply migrations:
+
+```bash
+cd emotion_dashboard
+python manage.py migrate
+python manage.py showmigrations monitor
+```
+
+Both commands must complete against Supabase. Do not continue if Django reports
+an authentication, DNS, SSL, or migration error.
+
 ## Local Docker development
 
 ```bash
-cp .env.example .env
-# Change DJANGO_SECRET_KEY and the database password in both .env and docker-compose.yml
+cp .env.example .env.saas
+# Add the Supabase connection and replace DJANGO_SECRET_KEY in .env.saas
 docker compose up --build
 ```
+
+Docker Compose runs Redis locally, but it does not create or override the
+PostgreSQL database. Django, FastAPI, and the worker all receive the same
+Supabase configuration from `.env.saas`.
 
 Create the first administrator:
 
@@ -29,7 +59,7 @@ environment with OpenCV, Requests and python-dotenv installed.
 ## Production changes still required
 
 - Replace the shared Docker volume with private S3/R2/GCS-compatible storage.
-- Use a managed PostgreSQL database and managed Redis.
+- Keep Supabase PostgreSQL and use a managed Redis service.
 - Set `DJANGO_DEBUG=false`, real hosts, trusted origins and HTTPS settings.
 - Use separate API and worker autoscaling policies.
 - Add centralized logs, metrics, error tracking, backups and recovery tests.
