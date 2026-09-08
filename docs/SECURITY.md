@@ -1,12 +1,16 @@
 # Security and privacy baseline
 
-- Raw face images are private and are deleted after analysis by default.
-- Every camera/device uses a separate revocable API key.
-- API keys are stored only as SHA-256 hashes and are displayed once on creation.
-- Dashboard users without an organisation and branch assignment are denied.
-- Face identification is disabled by default.
-- Do not use expression results as proof of a person's internal emotional state.
-- Obtain legal/privacy review, provide notice, document consent or another valid
-  lawful basis, and configure retention before any live deployment.
-- Put the dashboard and API behind HTTPS and a managed reverse proxy/WAF.
-- Add object storage and signed URLs before a multi-host production deployment.
+- Every upload requires `X-Bank-Code` and `X-API-Key`.
+- Bank API keys are stored as hashes and the raw value is shown only when set.
+- Branch selection is server-controlled from an active PC-name prefix.
+- Dashboard queries and private image responses are tenant-scoped.
+- Users without a valid bank/branch assignment receive no cross-tenant data.
+- Supabase connections require TLS (`DB_SSLMODE=require`).
+- `.env`, captured images, embeddings, logs, and exports must never be committed.
+- Teller machines receive only client credentials, never database or Django
+  secrets.
+- Put both web services behind HTTPS and rotate any exposed credential.
+- Treat face images and embeddings as sensitive data with documented notice,
+  access, deletion, and retention controls.
+- Do not present inferred expressions as proof of a person's internal state.
+- Add liveness/anti-spoofing before relying on persistent face matching.

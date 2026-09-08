@@ -1,15 +1,4 @@
 services:
-  redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
   dashboard:
     build:
       context: .
@@ -17,8 +6,11 @@ services:
     env_file: .env
     environment:
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,dashboard
+      CAPTURED_FACES_ROOT: /data/captured_faces
     ports:
       - "8000:8000"
+    volumes:
+      - captured_faces:/data/captured_faces
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3)"]
       interval: 10s
@@ -31,38 +23,15 @@ services:
       dockerfile: Dockerfile.api
     env_file: .env
     environment:
-      REDIS_URL: redis://redis:6379/0
-      CAPTURED_FACES_DIR: /data/private_uploads
+      CAPTURED_FACES_ROOT: /data/captured_faces
     ports:
       - "8001:8001"
     volumes:
-      - private_uploads:/data/private_uploads
+      - captured_faces:/data/captured_faces
     depends_on:
       dashboard:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: on-failure
-
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
-    env_file: .env
-    environment:
-      REDIS_URL: redis://redis:6379/0
-      CAPTURED_FACES_DIR: /data/private_uploads
-    volumes:
-      - private_uploads:/data/private_uploads
-      - model_cache:/root/.deepface
-    depends_on:
-      dashboard:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     restart: on-failure
 
 volumes:
-  redis_data:
-  private_uploads:
-  model_cache:
+  captured_faces:

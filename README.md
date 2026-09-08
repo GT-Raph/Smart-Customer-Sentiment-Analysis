@@ -1,58 +1,53 @@
 # Smart Customer Sentiment Analysis
 
-A SaaS-ready foundation for privacy-conscious facial-expression analytics. The
-system receives a cropped face from a registered device, queues analysis, runs
-DeepFace in a separate worker, and displays processed aggregate results in a
-Django dashboard. The `main` branch uses one hosted Supabase PostgreSQL database
-for the dashboard, ingestion API, and worker; the separate `non-saas` branch is
-not merged into it.
+A multi-bank SaaS application for customer facial-expression analytics. Teller
+camera clients upload cropped face images to an authenticated FastAPI service,
+the service records tenant-scoped results in Supabase PostgreSQL, and authorized
+bank users view analytics in the Django dashboard.
 
 > The output is a facial-expression signal, not proof of a person's true
-> emotion. Face identification is disabled by default.
+> emotion. Deploy only with an appropriate privacy, consent, and retention
+> policy.
+
+The `main` branch is the hosted Supabase SaaS product. The separate `non-saas`
+branch uses its own local deployment design and has not been merged into
+`main`.
 
 ## Architecture
 
 ```text
-Device agent -> FastAPI ingestion -> PostgreSQL job + Redis queue
-                                      |
-                                      v
-                              DeepFace RQ worker
-                                      |
-                                      v
-                              Django dashboard
+Teller camera -> FastAPI /upload-face -> DeepFace analysis
+                       |                       |
+                       `------ Supabase ------'
+                                  |
+                           Django dashboard
 ```
 
-## What was fixed
-
-- Removed committed database credentials and Django secret.
-- Replaced optional global API authentication with per-device revocable keys.
-- Added organisations, branches, devices and tenant-scoped dashboard access.
-- Added subscription states and atomic monthly analysis quotas per organisation.
-- Replaced conflicting database definitions with one Django-managed schema.
-- Moved DeepFace processing out of the web request and into an RQ worker.
-- Added upload type, byte-size, pixel-size and per-device rate limits.
-- Removed the public raw-image endpoint and enabled deletion after processing.
-- Added safe error responses, job status tracking and failed-job state.
-- Added short-lived, non-biometric visit sessions when face identification is disabled.
-- Replaced notebook production processing with importable Python modules.
-- Added Docker development deployment and basic tests.
+Each request supplies a bank code and API key. The Windows computer name is
+matched to the longest active PC prefix configured for one of that bank's
+branches. Django access is tenant-scoped for platform administrators, bank
+administrators, and branch users.
 
 ## Quick start
 
-Copy `.env.example` to `.env`, paste the Session pooler connection details
-from the Supabase **Connect** panel, and then follow
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Existing prototype databases
-should follow [docs/MIGRATION_GUIDE.md](docs/MIGRATION_GUIDE.md).
+1. Copy `.env.example` to `.env` and enter the Supabase Session pooler values.
+2. Install `requirements.txt` in a Python 3.10 virtual environment.
+3. Follow [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-## Main services
+All server-side components read the root `.env` file. Password punctuation is
+handled safely by the separate `DB_*` settings; no manually assembled database
+URL is required.
 
-- `emotion_dashboard/`: Django SaaS control plane and analytics dashboard.
-- `api_server/face_api.py`: authenticated ingestion API.
-- `api_server/worker.py`: DeepFace/RQ inference worker.
-- `clients/device_agent.py`: low-rate reference camera client.
+## Main components
 
-## Commercial SaaS work remaining
+- `emotion_dashboard/`: Django SaaS dashboard, admin, tenancy, and migrations.
+- `api_server/face_api.py`: bank-authenticated ingestion and analysis API.
+- `desktop_capture.py`: production-oriented teller camera client.
+- `clients/device_agent.py`: smaller reference camera client.
+- `captured_faces/`: private, shared local image storage (gitignored).
 
-Payment-provider integration, customer onboarding, audit-log UI, data export/deletion UI,
-object storage, webhooks, model-quality monitoring, legal documentation and
-production observability remain to be implemented.
+## Commercial work remaining
+
+Billing/subscriptions, self-service customer onboarding, private object storage,
+audit logs, data export/deletion workflows, production observability, and formal
+model/privacy validation remain before a public commercial launch.

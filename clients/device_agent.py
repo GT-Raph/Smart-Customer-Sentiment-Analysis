@@ -19,10 +19,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-API_URL = os.getenv("INGESTION_API_URL", "http://127.0.0.1:8001/v1/snapshots")
-DEVICE_API_KEY = os.getenv("DEVICE_API_KEY", "")
+API_URL = os.getenv("INGESTION_API_URL") or os.getenv(
+    "FACE_API_URL", "http://127.0.0.1:8001/upload-face"
+)
+BANK_API_KEY = os.getenv("BANK_API_KEY", "")
+BANK_CODE = os.getenv("BANK_CODE", "").strip().upper()
 CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "0"))
-MIN_SECONDS_BETWEEN_UPLOADS = float(os.getenv("MIN_SECONDS_BETWEEN_UPLOADS", "10"))
+MIN_SECONDS_BETWEEN_UPLOADS = float(
+    os.getenv("MIN_SECONDS_BETWEEN_UPLOADS")
+    or os.getenv("CAPTURE_INTERVAL_SECONDS", "10")
+)
 REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "15"))
 LOCAL_QUEUE = Path(os.getenv("LOCAL_CAPTURE_QUEUE", "queued_captures")).resolve()
 MAX_QUEUED_IMAGES = int(os.getenv("MAX_QUEUED_IMAGES", "100"))
@@ -33,8 +39,10 @@ FACE_CASCADE = cv2.CascadeClassifier(CASCADE_PATH)
 
 
 def validate_config() -> None:
-    if not DEVICE_API_KEY:
-        raise RuntimeError("DEVICE_API_KEY is required")
+    if not BANK_CODE:
+        raise RuntimeError("BANK_CODE is required")
+    if not BANK_API_KEY:
+        raise RuntimeError("BANK_API_KEY is required")
     if FACE_CASCADE.empty():
         raise RuntimeError("OpenCV face detector could not be loaded")
     LOCAL_QUEUE.mkdir(parents=True, exist_ok=True)
@@ -43,15 +51,15 @@ def validate_config() -> None:
 def upload_image(jpeg_bytes: bytes, session_id: str) -> bool:
     response = requests.post(
         API_URL,
-        headers={"X-API-Key": DEVICE_API_KEY},
+        headers={"X-Bank-Code": BANK_CODE, "X-API-Key": BANK_API_KEY},
         files={"file": ("face.jpg", jpeg_bytes, "image/jpeg")},
-        data={"session_id": session_id},
+        data={"pc_name": socket.gethostname().strip().upper()},
         timeout=REQUEST_TIMEOUT,
     )
-    if response.status_code == 202:
+    if 200 <= response.status_code < 300:
         return True
     if response.status_code in {401, 403}:
-        raise RuntimeError("The device API key was rejected")
+        raise RuntimeError("The bank API credentials were rejected")
     return False
 
 

@@ -1,182 +1,292 @@
-import hashlib
-import io
+import tempfile
+from pathlib import Path
 
-from django.core.exceptions import PermissionDenied, ValidationError
-from django.core.management import call_command
-from django.test import TestCase
+from django.test import (
+    TestCase,
+    override_settings,
+)
 from django.urls import reverse
 from django.utils import timezone
 
-from emotion_dashboard.settings import database_from_url
-from .models import Branch, CapturedSnapshot, CustomUser, Device, Organization, Visitor
-from .views import get_user_pc_prefix
+from .models import (
+    Bank,
+    Branch,
+    CapturedSnapshot,
+    CustomUser,
+    Visitor,
+)
 
 
-class TenantAccessTests(TestCase):
+TEST_IMAGE_DIRECTORY = (
+    Path(tempfile.gettempdir())
+    / "sentiment-test-faces"
+)
+
+
+@override_settings(
+    CAPTURED_FACES_ROOT=TEST_IMAGE_DIRECTORY
+)
+class TenantIsolationTests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Example", slug="example")
-        self.branch = Branch.objects.create(
-            organization=self.org, name="Accra", pc_prefix="ACC001"
+        TEST_IMAGE_DIRECTORY.mkdir(
+            parents=True,
+            exist_ok=True,
         )
 
-    def test_unassigned_user_is_denied(self):
-        user = CustomUser(username="unassigned")
-        with self.assertRaises(PermissionDenied):
-            get_user_pc_prefix(user)
-
-    def test_assigned_user_gets_only_branch_prefix(self):
-        user = CustomUser(
-            username="analyst", organization=self.org, branch=self.branch
+        self.bank_a = Bank.objects.create(
+            name="Bank A",
+            code="BANK_A",
         )
-        self.assertEqual(get_user_pc_prefix(user), "ACC001")
 
-    def test_cross_organization_branch_is_invalid(self):
-        other = Organization.objects.create(name="Other", slug="other")
-        user = CustomUser(username="bad", organization=other, branch=self.branch)
-        with self.assertRaises(ValidationError):
-            user.full_clean()
-
-    def test_branch_assignment_requires_an_organization(self):
-        user = CustomUser(username="bad", branch=self.branch)
-        with self.assertRaises(ValidationError):
-            user.full_clean()
-
-    def test_unassigned_logged_in_user_cannot_open_dashboard(self):
-        user = CustomUser.objects.create_user(username="unassigned", password="safe-pass-123")
-        self.client.force_login(user)
-        response = self.client.get("/dashboard/")
-        self.assertEqual(response.status_code, 403)
-
-    def test_assigned_user_can_open_dashboard(self):
-        user = CustomUser.objects.create_user(
-            username="analyst",
-            password="safe-pass-123",
-            organization=self.org,
-            branch=self.branch,
+        self.bank_b = Bank.objects.create(
+            name="Bank B",
+            code="BANK_B",
         )
-        self.client.force_login(user)
-        response = self.client.get("/dashboard/")
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, reverse("branch_detail", args=[self.branch.id]))
 
-    def test_assigned_user_can_only_open_their_branch(self):
-        other = Branch.objects.create(
-            organization=self.org, name="Kumasi", pc_prefix="KSI001"
+        self.branch_a = Branch.objects.create(
+            bank=self.bank_a,
+            name="Bank A Main Branch",
+            code="MAIN",
+            pc_prefix="BANK-A-PC",
+            location="Accra",
         )
-        user = CustomUser.objects.create_user(
-            username="analyst",
-            password="safe-pass-123",
-            organization=self.org,
-            branch=self.branch,
-        )
-        self.client.force_login(user)
-        self.assertEqual(self.client.get(f"/branch/{self.branch.id}/").status_code, 200)
-        self.assertEqual(self.client.get(f"/branch/{other.id}/").status_code, 403)
 
-    def test_overlapping_pc_prefix_cannot_leak_another_branch_totals(self):
-        overlapping_branch = Branch.objects.create(
-            organization=self.org, name="Remote", pc_prefix="ACC0012"
+        self.branch_b = Branch.objects.create(
+            bank=self.bank_b,
+            name="Bank B Main Branch",
+            code="MAIN",
+            pc_prefix="BANK-B-PC",
+            location="Kumasi",
         )
-        device = Device.objects.create(
-            organization=self.org,
-            branch=overlapping_branch,
-            name="Remote camera",
-            pc_name="ACC0012-CAM",
-            api_key_prefix="remote-prefix",
-            api_key_hash="0" * 64,
-        )
-        visitor = Visitor.objects.create(
-            organization=self.org,
-            face_id="remote-visitor",
-            first_seen=timezone.now(),
-            last_seen=timezone.now(),
-        )
-        CapturedSnapshot.objects.create(
-            job_id="01REMOTEVISITOR00000000000",
-            organization=self.org,
-            branch=overlapping_branch,
-            device=device,
-            visitor=visitor,
-            pc_name=device.pc_name,
-            timestamp=timezone.now(),
-            status=CapturedSnapshot.Status.PROCESSED,
-            processed=True,
-            emotion="happy",
-        )
-        user = CustomUser.objects.create_user(
-            username="analyst",
-            password="safe-pass-123",
-            organization=self.org,
-            branch=self.branch,
-        )
-        self.client.force_login(user)
 
-        response = self.client.get("/dashboard/")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["total_visitors"], 0)
-
-    def test_superuser_invalid_branch_filter_returns_404(self):
-        admin = CustomUser.objects.create_superuser(
-            username="admin", email="admin@example.com", password="safe-pass-123"
-        )
-        self.client.force_login(admin)
-        response = self.client.get("/dashboard/?branch=DOES-NOT-EXIST")
-        self.assertEqual(response.status_code, 404)
-
-    def test_superuser_saas_navigation_pages_render(self):
-        admin = CustomUser.objects.create_superuser(
-            username="admin", email="admin@example.com", password="safe-pass-123"
-        )
-        self.client.force_login(admin)
-        for url in (
-            "/dashboard/",
-            "/branches/",
-            f"/branch/{self.branch.id}/",
-            "/emotion-analytics/",
-            "/reports/",
-            "/settings/",
-        ):
-            with self.subTest(url=url):
-                self.assertEqual(self.client.get(url).status_code, 200)
-
-
-class DatabaseUrlTests(TestCase):
-    def test_supabase_url_enables_ssl_and_health_checks(self):
-        config = database_from_url(
-            "postgresql://postgres.project:secret@aws-0-region.pooler.supabase.com:5432/postgres"
-        )
-        self.assertEqual(config["ENGINE"], "django.db.backends.postgresql")
-        self.assertEqual(config["OPTIONS"]["sslmode"], "require")
-        self.assertTrue(config["CONN_HEALTH_CHECKS"])
-
-    def test_invalid_port_has_an_actionable_error(self):
-        with self.assertRaisesRegex(RuntimeError, "invalid port"):
-            database_from_url(
-                "postgresql://postgres.project:secret@pooler.supabase.com:Z9/postgres"
+        self.bank_a_admin = (
+            CustomUser.objects.create_user(
+                username="bank-a-admin",
+                password="SafePass12345",
+                bank=self.bank_a,
             )
-
-
-class DeviceKeyCommandTests(TestCase):
-    def test_command_prints_key_once_and_stores_only_hash(self):
-        org = Organization.objects.create(name="Example", slug="example")
-        branch = Branch.objects.create(
-            organization=org, name="Accra", pc_prefix="ACC001"
         )
-        output = io.StringIO()
-        call_command(
-            "create_device_key",
-            organization="example",
-            branch=branch.id,
-            name="Front Desk",
-            pc_name="ACC001-CAM",
-            stdout=output,
+
+        self.bank_b_admin = (
+            CustomUser.objects.create_user(
+                username="bank-b-admin",
+                password="SafePass12345",
+                bank=self.bank_b,
+            )
         )
-        token = output.getvalue().strip().splitlines()[-1]
-        device = Device.objects.get(pc_name="ACC001-CAM")
-        self.assertTrue(token.startswith(f"scs_{device.api_key_prefix}_"))
+
+        self.bank_a_branch_user = (
+            CustomUser.objects.create_user(
+                username="bank-a-branch-user",
+                password="SafePass12345",
+                bank=self.bank_a,
+                branch=self.branch_a,
+            )
+        )
+
+        # The same face ID may exist in different banks.
+        # The bank relationship keeps them separate.
+        self.visitor_a = Visitor.objects.create(
+            bank=self.bank_a,
+            face_id="same-face-id",
+        )
+
+        self.visitor_b = Visitor.objects.create(
+            bank=self.bank_b,
+            face_id="same-face-id",
+        )
+
+        self.snapshot_a = (
+            CapturedSnapshot.objects.create(
+                job_id="job-bank-a",
+                bank=self.bank_a,
+                branch=self.branch_a,
+                visitor=self.visitor_a,
+                pc_name="BANK-A-PC-01",
+                image_path=(
+                    "BANK_A/MAIN/bank-a.jpg"
+                ),
+                timestamp=timezone.now(),
+                emotion="happy",
+                confidence=94.5,
+                status="done",
+                processed=True,
+            )
+        )
+
+        self.snapshot_b = (
+            CapturedSnapshot.objects.create(
+                job_id="job-bank-b",
+                bank=self.bank_b,
+                branch=self.branch_b,
+                visitor=self.visitor_b,
+                pc_name="BANK-B-PC-01",
+                image_path=(
+                    "BANK_B/MAIN/bank-b.jpg"
+                ),
+                timestamp=timezone.now(),
+                emotion="angry",
+                confidence=91.0,
+                status="done",
+                processed=True,
+            )
+        )
+
+    def test_bank_a_dashboard_does_not_count_bank_b_data(self):
+        login_successful = self.client.login(
+            username="bank-a-admin",
+            password="SafePass12345",
+        )
+
+        self.assertTrue(
+            login_successful
+        )
+
+        response = self.client.get(
+            reverse("dashboard")
+        )
+
         self.assertEqual(
-            device.api_key_hash,
-            hashlib.sha256(token.encode("utf-8")).hexdigest(),
+            response.status_code,
+            200,
         )
-        self.assertNotEqual(device.api_key_hash, token)
+
+        self.assertEqual(
+            response.context[
+                "total_detections"
+            ],
+            1,
+        )
+
+        self.assertEqual(
+            response.context[
+                "top_emotion"
+            ]["emotion"],
+            "happy",
+        )
+
+    def test_bank_b_dashboard_does_not_count_bank_a_data(self):
+        self.client.login(
+            username="bank-b-admin",
+            password="SafePass12345",
+        )
+
+        response = self.client.get(
+            reverse("dashboard")
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            response.context[
+                "total_detections"
+            ],
+            1,
+        )
+
+        self.assertEqual(
+            response.context[
+                "top_emotion"
+            ]["emotion"],
+            "angry",
+        )
+
+    def test_bank_a_cannot_open_bank_b_branch(self):
+        self.client.login(
+            username="bank-a-admin",
+            password="SafePass12345",
+        )
+
+        response = self.client.get(
+            reverse(
+                "branch_detail",
+                args=[self.branch_b.id],
+            )
+        )
+
+        self.assertEqual(
+            response.status_code,
+            404,
+        )
+
+    def test_bank_a_cannot_open_bank_b_image(self):
+        self.client.login(
+            username="bank-a-admin",
+            password="SafePass12345",
+        )
+
+        response = self.client.get(
+            reverse(
+                "snapshot_image",
+                args=[self.snapshot_b.id],
+            )
+        )
+
+        self.assertEqual(
+            response.status_code,
+            404,
+        )
+
+    def test_branch_user_cannot_open_another_bank_branch(self):
+        self.client.login(
+            username="bank-a-branch-user",
+            password="SafePass12345",
+        )
+
+        response = self.client.get(
+            reverse(
+                "branch_detail",
+                args=[self.branch_b.id],
+            )
+        )
+
+        self.assertEqual(
+            response.status_code,
+            404,
+        )
+
+    def test_same_face_id_can_exist_in_two_banks(self):
+        self.assertEqual(
+            self.visitor_a.face_id,
+            self.visitor_b.face_id,
+        )
+
+        self.assertNotEqual(
+            self.visitor_a.bank_id,
+            self.visitor_b.bank_id,
+        )
+
+        self.assertNotEqual(
+            self.visitor_a.id,
+            self.visitor_b.id,
+        )
+
+    def test_bank_admin_cannot_filter_dashboard_using_other_bank_branch(self):
+        self.client.login(
+            username="bank-a-admin",
+            password="SafePass12345",
+        )
+
+        response = self.client.get(
+            reverse("dashboard"),
+            {
+                "branch": self.branch_b.id,
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        # The unauthorised branch filter must not reveal
+        # Bank B's angry snapshot.
+        self.assertEqual(
+            response.context[
+                "top_emotion"
+            ]["emotion"],
+            "happy",
+        )

@@ -1,310 +1,423 @@
-"""Small PostgreSQL data-access layer shared by the API and worker."""
-
-from __future__ import annotations
-
-import secrets
+import hashlib
+import hmac
 import json
 from contextlib import contextmanager
-from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Iterator
 
 import numpy as np
 import psycopg2
-from psycopg2.extras import Json, RealDictCursor
+from psycopg2.extras import RealDictCursor
 
-from .config import settings
-from .security import api_key_prefix, hash_api_key
-
-
-@dataclass(frozen=True)
-class DeviceContext:
-    id: int
-    organization_id: int
-    branch_id: int
-    name: str
-    pc_name: str
-    plan: str = "free"
-    monthly_analysis_limit: int = 1000
-
-
-class QuotaExceeded(RuntimeError):
-    pass
+from .config import DB_CONFIG
 
 
 @contextmanager
-def database() -> Iterator[Any]:
-    """Open a short-lived database connection and always close it."""
-    connection = psycopg2.connect(settings.database_url, connect_timeout=10)
+def get_db():
+    """
+    Yield a PostgreSQL connection and always close it on exit.
+    """
+    missing_settings = [
+        key
+        for key, value in DB_CONFIG.items()
+        if key != "sslmode" and not value
+    ]
+
+    if missing_settings:
+        raise RuntimeError(
+            "Missing database settings: "
+            + ", ".join(missing_settings)
+        )
+
+    database = psycopg2.connect(
+        **DB_CONFIG
+    )
+
     try:
-        yield connection
-        connection.commit()
-    except Exception:
-        connection.rollback()
-        raise
+        yield database
     finally:
-        connection.close()
+        database.close()
 
 
-def authenticate_device(token: str) -> DeviceContext | None:
-    prefix = api_key_prefix(token)
-    if not prefix:
+def verify_bank_api_key(
+    cursor,
+    bank_code,
+    raw_api_key,
+):
+    """
+    Verify that the supplied API key belongs to the bank.
+
+    API keys are stored only as SHA-256 hashes.
+    """
+    normalized_bank_code = (
+        bank_code.strip().upper()
+    )
+
+    cursor.execute(
+        """
+        SELECT
+            id,
+            code,
+            name,
+            api_key_hash
+        FROM tenant_bank
+        WHERE code = %s
+          AND is_active = TRUE
+        """,
+        (
+            normalized_bank_code,
+        ),
+    )
+
+    bank = cursor.fetchone()
+
+    if not bank:
         return None
 
-    with database() as db, db.cursor(cursor_factory=RealDictCursor) as cursor:
-        cursor.execute(
-            """
-            SELECT d.id, d.organization_id, d.branch_id, d.name, d.pc_name,
-                   d.api_key_hash, o.plan, o.monthly_analysis_limit
-              FROM monitor_device d
-              JOIN monitor_organization o ON o.id = d.organization_id
-              JOIN monitor_branch b ON b.id = d.branch_id
-             WHERE d.api_key_prefix = %s
-               AND d.is_active = TRUE
-               AND o.is_active = TRUE
-               AND o.subscription_status IN ('trialing', 'active')
-               AND b.is_active = TRUE
-               AND b.organization_id = d.organization_id
-             LIMIT 1
-            """,
-            (prefix,),
-        )
-        row = cursor.fetchone()
-        if not row or not secrets.compare_digest(row["api_key_hash"], hash_api_key(token)):
-            return None
+    if not raw_api_key:
+        return None
 
-        cursor.execute(
-            "UPDATE monitor_device SET last_seen_at = %s WHERE id = %s",
-            (datetime.now(timezone.utc), row["id"]),
-        )
-        return DeviceContext(
-            id=row["id"],
-            organization_id=row["organization_id"],
-            branch_id=row["branch_id"],
-            name=row["name"],
-            pc_name=row["pc_name"] or row["name"],
-            plan=row["plan"],
-            monthly_analysis_limit=row["monthly_analysis_limit"],
-        )
+    supplied_hash = hashlib.sha256(
+        raw_api_key.encode("utf-8")
+    ).hexdigest()
+
+    stored_hash = (
+        bank["api_key_hash"]
+        or ""
+    )
+
+    api_key_is_valid = hmac.compare_digest(
+        stored_hash,
+        supplied_hash,
+    )
+
+    if not api_key_is_valid:
+        return None
+
+    return bank
 
 
-def insert_snapshot(
+def get_branch_by_pc_name(
+    cursor,
+    bank_id,
+    pc_name,
+):
+    """
+    Find the branch belonging to this bank whose configured
+    PC prefix matches the beginning of the computer name.
+
+    Examples:
+
+        PC name: FBLRGE001
+        Prefix:  FBLRGE
+        Branch:  Ridge Towers
+
+        PC name: FBLNUN004
+        Prefix:  FBLNUN
+        Branch:  Nungua
+
+    Prefix matching is bank-specific. Another bank can use
+    an entirely different naming system.
+
+    When more than one prefix matches, the longest prefix wins.
+    This avoids a short prefix taking priority over a more
+    specific prefix.
+    """
+    normalized_pc_name = (
+        pc_name.strip().upper()
+    )
+
+    if not normalized_pc_name:
+        return None
+
+    cursor.execute(
+        """
+        SELECT
+            id,
+            bank_id,
+            code,
+            name,
+            pc_prefix,
+            location
+        FROM tenant_branch
+        WHERE bank_id = %s
+          AND is_active = TRUE
+          AND pc_prefix IS NOT NULL
+          AND BTRIM(pc_prefix) <> ''
+        """,
+        (
+            bank_id,
+        ),
+    )
+
+    matching_branches = []
+
+    for branch_row in cursor.fetchall():
+        branch = dict(
+            branch_row
+        )
+
+        configured_prefix = (
+            branch["pc_prefix"]
+            or ""
+        ).strip()
+
+        normalized_prefix = (
+            configured_prefix.upper()
+        )
+
+        if not normalized_prefix:
+            continue
+
+        if normalized_pc_name.startswith(
+            normalized_prefix
+        ):
+            branch["matched_prefix"] = (
+                configured_prefix
+            )
+
+            matching_branches.append(
+                branch
+            )
+
+    if not matching_branches:
+        return None
+
+    matching_branches.sort(
+        key=lambda branch: len(
+            (
+                branch["pc_prefix"]
+                or ""
+            ).strip()
+        ),
+        reverse=True,
+    )
+
+    return matching_branches[0]
+
+
+def get_embeddings_db(
+    cursor,
+    bank_id,
+):
+    """
+    Return known face embeddings belonging only to one bank.
+
+    A face from one bank is never compared with a face
+    belonging to another bank.
+    """
+    cursor.execute(
+        """
+        SELECT DISTINCT ON (visitor.face_id)
+            visitor.face_id,
+            snapshot.embedding
+        FROM analytics_snapshot AS snapshot
+
+        INNER JOIN analytics_visitor AS visitor
+            ON visitor.id = snapshot.visitor_id
+
+        WHERE snapshot.bank_id = %s
+          AND visitor.bank_id = %s
+          AND snapshot.embedding IS NOT NULL
+          AND snapshot.status = 'done'
+
+        ORDER BY
+            visitor.face_id,
+            snapshot.timestamp DESC,
+            snapshot.id DESC
+        """,
+        (
+            bank_id,
+            bank_id,
+        ),
+    )
+
+    known_embeddings = []
+
+    for database_row in cursor.fetchall():
+        try:
+            embedding_value = (
+                database_row["embedding"]
+            )
+
+            if isinstance(
+                embedding_value,
+                str,
+            ):
+                embedding_value = json.loads(
+                    embedding_value
+                )
+
+            embedding_array = np.asarray(
+                embedding_value,
+                dtype=np.float64,
+            )
+
+            known_embeddings.append(
+                (
+                    database_row["face_id"],
+                    embedding_array,
+                )
+            )
+
+        except (
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ):
+            continue
+
+    return known_embeddings
+
+
+def save_snapshot_to_db(
+    database,
     *,
-    job_id: str,
-    device: DeviceContext,
-    image_path: str,
-    content_type: str,
-    size_bytes: int,
-    session_id: str,
-) -> int:
-    with database() as db, db.cursor() as cursor:
-        now = datetime.now(timezone.utc)
-        period_start = now.date().replace(day=1)
-        if device.monthly_analysis_limit > 0:
-            cursor.execute(
-                """
-                INSERT INTO monitor_monthlyusage (
-                    organization_id, period_start, analyses_count, updated_at
-                ) VALUES (%s, %s, 1, %s)
-                ON CONFLICT (organization_id, period_start)
-                DO UPDATE SET analyses_count = monitor_monthlyusage.analyses_count + 1,
-                              updated_at = EXCLUDED.updated_at
-                WHERE monitor_monthlyusage.analyses_count < %s
-                RETURNING analyses_count
-                """,
-                (device.organization_id, period_start, now, device.monthly_analysis_limit),
+    job_id,
+    bank_id,
+    branch_id,
+    face_id,
+    pc_name,
+    image_path,
+    embedding,
+    emotion,
+    confidence,
+    emotion_vector,
+):
+    """
+    Save a visitor and sentiment snapshot.
+
+    Every visitor and snapshot is explicitly linked to a bank.
+    """
+    current_time = datetime.now(
+        timezone.utc
+    )
+
+    clean_embedding = [
+        float(value)
+        for value in embedding
+    ]
+
+    clean_emotion_vector = {
+        str(emotion_name): float(emotion_value)
+        for emotion_name, emotion_value
+        in emotion_vector.items()
+    }
+
+    embedding_json = json.dumps(
+        clean_embedding
+    )
+
+    emotion_vector_json = json.dumps(
+        clean_emotion_vector
+    )
+
+    normalized_pc_name = (
+        pc_name.strip().upper()
+    )
+
+    with database.cursor(
+        cursor_factory=RealDictCursor
+    ) as cursor:
+        cursor.execute(
+            """
+            INSERT INTO analytics_visitor (
+                bank_id,
+                face_id,
+                first_seen,
+                last_seen
             )
-            if cursor.fetchone() is None:
-                raise QuotaExceeded("Monthly analysis quota exceeded")
-        else:
-            cursor.execute(
-                """
-                INSERT INTO monitor_monthlyusage (
-                    organization_id, period_start, analyses_count, updated_at
-                ) VALUES (%s, %s, 1, %s)
-                ON CONFLICT (organization_id, period_start)
-                DO UPDATE SET analyses_count = monitor_monthlyusage.analyses_count + 1,
-                              updated_at = EXCLUDED.updated_at
-                """,
-                (device.organization_id, period_start, now),
+            VALUES (
+                %s,
+                %s,
+                %s,
+                %s
             )
+
+            ON CONFLICT (
+                bank_id,
+                face_id
+            )
+            DO UPDATE SET
+                last_seen = EXCLUDED.last_seen
+
+            RETURNING id
+            """,
+            (
+                bank_id,
+                face_id,
+                current_time,
+                current_time,
+            ),
+        )
+
+        visitor_id = cursor.fetchone()[
+            "id"
+        ]
 
         cursor.execute(
             """
-            INSERT INTO captured_snapshots (
-                job_id, organization_id, branch_id, device_id, pc_name, session_id,
-                image_path, upload_content_type, upload_size_bytes,
-                status, processed, timestamp
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'queued', FALSE, %s)
-            RETURNING id
+            INSERT INTO analytics_snapshot (
+                job_id,
+                bank_id,
+                branch_id,
+                visitor_id,
+                pc_name,
+                image_path,
+                timestamp,
+                emotion,
+                confidence,
+                emotion_vector,
+                embedding,
+                processed,
+                status,
+                processing_error
+            )
+            VALUES (
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s::jsonb,
+                %s::jsonb,
+                TRUE,
+                'done',
+                ''
+            )
             """,
             (
                 job_id,
-                device.organization_id,
-                device.branch_id,
-                device.id,
-                device.pc_name,
-                session_id,
-                image_path,
-                content_type,
-                size_bytes,
-                now,
-            ),
-        )
-        return int(cursor.fetchone()[0])
-
-
-def get_snapshot(snapshot_id: int) -> dict[str, Any] | None:
-    with database() as db, db.cursor(cursor_factory=RealDictCursor) as cursor:
-        cursor.execute(
-            "SELECT * FROM captured_snapshots WHERE id = %s",
-            (snapshot_id,),
-        )
-        row = cursor.fetchone()
-        return dict(row) if row else None
-
-
-def get_snapshot_for_device(job_id: str, device: DeviceContext) -> dict[str, Any] | None:
-    with database() as db, db.cursor(cursor_factory=RealDictCursor) as cursor:
-        cursor.execute(
-            """
-            SELECT id, job_id, status, emotion, confidence, error_message,
-                   image_path, timestamp, processed_at
-              FROM captured_snapshots
-             WHERE job_id = %s
-               AND organization_id = %s
-               AND device_id = %s
-             LIMIT 1
-            """,
-            (job_id, device.organization_id, device.id),
-        )
-        row = cursor.fetchone()
-        return dict(row) if row else None
-
-
-def mark_processing(snapshot_id: int) -> None:
-    with database() as db, db.cursor() as cursor:
-        cursor.execute(
-            """
-            UPDATE captured_snapshots
-               SET status = 'processing', error_message = ''
-             WHERE id = %s
-            """,
-            (snapshot_id,),
-        )
-
-
-def mark_failed(snapshot_id: int, error_message: str) -> None:
-    safe_message = error_message[:500]
-    with database() as db, db.cursor() as cursor:
-        cursor.execute(
-            """
-            UPDATE captured_snapshots
-               SET status = 'failed', processed = FALSE,
-                   error_message = %s, processed_at = %s
-             WHERE id = %s
-            """,
-            (safe_message, datetime.now(timezone.utc), snapshot_id),
-        )
-
-
-def get_embeddings(organization_id: int) -> list[tuple[int, str, np.ndarray]]:
-    with database() as db, db.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT v.id, v.face_id, s.embedding
-              FROM monitor_visitor v
-              JOIN LATERAL (
-                    SELECT embedding
-                      FROM captured_snapshots cs
-                     WHERE cs.visitor_id = v.id
-                       AND cs.embedding IS NOT NULL
-                     ORDER BY cs.timestamp DESC
-                     LIMIT 1
-              ) s ON TRUE
-             WHERE v.organization_id = %s
-            """,
-            (organization_id,),
-        )
-        known: list[tuple[int, str, np.ndarray]] = []
-        for visitor_id, face_id, value in cursor.fetchall():
-            try:
-                embedding = value
-                if isinstance(value, str):
-                    embedding = json.loads(value)
-                known.append(
-                    (visitor_id, face_id, np.asarray(embedding, dtype=np.float64))
-                )
-            except (TypeError, ValueError, json.JSONDecodeError):
-                continue
-        return known
-
-
-def create_visitor(organization_id: int, face_id: str) -> int:
-    now = datetime.now(timezone.utc)
-    with database() as db, db.cursor() as cursor:
-        cursor.execute(
-            """
-            INSERT INTO monitor_visitor (organization_id, face_id, first_seen, last_seen)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (organization_id, face_id)
-            DO UPDATE SET last_seen = EXCLUDED.last_seen
-            RETURNING id
-            """,
-            (organization_id, face_id, now, now),
-        )
-        return int(cursor.fetchone()[0])
-
-
-def complete_snapshot(
-    *,
-    snapshot_id: int,
-    visitor_id: int,
-    emotion: str,
-    confidence: float,
-    emotion_vector: dict[str, float],
-    embedding: list[float] | None,
-    image_path: str | None,
-) -> None:
-    with database() as db, db.cursor() as cursor:
-        completed_at = datetime.now(timezone.utc)
-        cursor.execute(
-            "UPDATE monitor_visitor SET last_seen = %s WHERE id = %s",
-            (completed_at, visitor_id),
-        )
-        cursor.execute(
-            """
-            UPDATE captured_snapshots
-               SET visitor_id = %s,
-                   emotion = %s,
-                   confidence = %s,
-                   emotion_vector = %s,
-                   embedding = %s,
-                   image_path = %s,
-                   status = 'processed',
-                   processed = TRUE,
-                   error_message = '',
-                   processed_at = %s
-             WHERE id = %s
-            """,
-            (
+                bank_id,
+                branch_id,
                 visitor_id,
+                normalized_pc_name,
+                image_path,
+                current_time,
                 emotion,
                 confidence,
-                Json(emotion_vector),
-                Json(embedding) if embedding is not None else None,
-                image_path,
-                completed_at,
-                snapshot_id,
+                emotion_vector_json,
+                embedding_json,
             ),
         )
 
 
-def database_is_ready() -> bool:
-    try:
-        with database() as db, db.cursor() as cursor:
-            cursor.execute("SELECT 1 FROM captured_snapshots LIMIT 1")
-            cursor.fetchone()
-        return True
-    except Exception:
-        return False
+def db_healthcheck():
+    """
+    Confirm that the PostgreSQL connection is working.
+    """
+    with get_db() as database:
+        with database.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1"
+            )
+
+            result = cursor.fetchone()
+
+    return bool(
+        result
+        and result[0] == 1
+    )

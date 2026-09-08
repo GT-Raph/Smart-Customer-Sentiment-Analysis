@@ -27,8 +27,23 @@ class DatabaseConfigurationTests(unittest.TestCase):
         self.assertIn("p%40ss%3A%23%2F%25word", value)
         self.assertTrue(value.endswith("?sslmode=require"))
 
+    def test_short_db_names_are_supported(self):
+        value = database_url_from_environment(
+            {
+                "DB_ENGINE": "postgresql",
+                "DB_NAME": "postgres",
+                "DB_USER": "postgres.project",
+                "DB_PASSWORD": "p@ss:#/%word",
+                "DB_HOST": "aws-0-region.pooler.supabase.com",
+                "DB_PORT": "5432",
+                "DB_SSLMODE": "require",
+            }
+        )
+        self.assertIn("p%40ss%3A%23%2F%25word", value)
+        self.assertTrue(value.endswith("?sslmode=require"))
+
     def test_incomplete_separate_values_are_rejected(self):
-        with self.assertRaisesRegex(RuntimeError, "SUPABASE_DB_PASSWORD"):
+        with self.assertRaisesRegex(RuntimeError, "DB_PASSWORD"):
             database_url_from_environment(
                 {
                     "SUPABASE_DB_NAME": "postgres",

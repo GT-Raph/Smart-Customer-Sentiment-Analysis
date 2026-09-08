@@ -1,37 +1,125 @@
-from __future__ import annotations
-
 import cv2
 import numpy as np
-from scipy.spatial.distance import cosine
+
+from .config import MATCH_THRESHOLD
 
 
-def match_face(
-    embedding: list[float] | np.ndarray,
-    known: list[tuple[int, str, np.ndarray]],
-    threshold: float,
-) -> tuple[int, str] | None:
-    """Return the nearest qualifying visitor rather than the first match."""
-    candidate = np.asarray(embedding, dtype=np.float64)
-    best: tuple[int, str] | None = None
-    best_distance = float("inf")
+def match_face_id(
+    embedding,
+    known_embeddings,
+    threshold=MATCH_THRESHOLD,
+):
+    candidate = np.asarray(
+        embedding,
+        dtype=np.float64,
+    )
 
-    for visitor_id, face_id, known_embedding in known:
-        if candidate.shape != known_embedding.shape:
+    if (
+        candidate.ndim != 1
+        or candidate.size == 0
+    ):
+        return None
+
+    candidate_norm = np.linalg.norm(
+        candidate
+    )
+
+    if (
+        not np.isfinite(candidate_norm)
+        or candidate_norm == 0
+    ):
+        return None
+
+    face_ids = []
+    compatible_embeddings = []
+
+    for face_id, known_embedding in known_embeddings:
+        known_array = np.asarray(
+            known_embedding,
+            dtype=np.float64,
+        )
+
+        if (
+            known_array.ndim != 1
+            or known_array.shape != candidate.shape
+        ):
             continue
-        distance = float(cosine(candidate, known_embedding))
-        if np.isnan(distance):
-            continue
-        if distance < best_distance:
-            best_distance = distance
-            best = (visitor_id, face_id)
 
-    return best if best is not None and best_distance < threshold else None
+        face_ids.append(
+            face_id
+        )
+
+        compatible_embeddings.append(
+            known_array
+        )
+
+    if not compatible_embeddings:
+        return None
+
+    embedding_matrix = np.vstack(
+        compatible_embeddings
+    )
+
+    known_norms = np.linalg.norm(
+        embedding_matrix,
+        axis=1,
+    )
+
+    denominators = (
+        known_norms * candidate_norm
+    )
+
+    with np.errstate(
+        divide="ignore",
+        invalid="ignore",
+    ):
+        similarities = (
+            embedding_matrix @ candidate
+        ) / denominators
+
+        distances = 1.0 - np.clip(
+            similarities,
+            -1.0,
+            1.0,
+        )
+
+    valid_indices = np.flatnonzero(
+        np.isfinite(distances)
+    )
+
+    if valid_indices.size == 0:
+        return None
+
+    best_index = valid_indices[
+        np.argmin(
+            distances[valid_indices]
+        )
+    ]
+
+    if distances[best_index] < threshold:
+        return face_ids[
+            int(best_index)
+        ]
+
+    return None
 
 
-def enhance_face(face_img: np.ndarray) -> np.ndarray:
-    if face_img is None or face_img.size == 0:
-        raise ValueError("Empty face image")
-    gray = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    enhanced_gray = clahe.apply(gray)
-    return cv2.cvtColor(enhanced_gray, cv2.COLOR_GRAY2BGR)
+def enhance_face(face_image):
+    gray = cv2.cvtColor(
+        face_image,
+        cv2.COLOR_BGR2GRAY,
+    )
+
+    clahe = cv2.createCLAHE(
+        clipLimit=2.0,
+        tileGridSize=(8, 8),
+    )
+
+    enhanced_gray = clahe.apply(
+        gray
+    )
+
+    return cv2.cvtColor(
+        enhanced_gray,
+        cv2.COLOR_GRAY2BGR,
+    )

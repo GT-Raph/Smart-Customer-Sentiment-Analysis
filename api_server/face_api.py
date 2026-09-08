@@ -1,255 +1,647 @@
-"""Authenticated image-ingestion API.
-
-The API validates and stores uploads, records a queued job, and delegates all
-model work to an RQ worker. It does not load TensorFlow/DeepFace itself.
-"""
-
-from __future__ import annotations
-
 import logging
-import os
-import secrets
-import re
-from io import BytesIO
+import threading
 from pathlib import Path
+from typing import Annotated
 
 import cv2
 import numpy as np
 import ulid
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
-from PIL import Image, UnidentifiedImageError
-from redis import Redis
-from rq import Queue
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    UploadFile,
+    status,
+)
+from psycopg2.extras import RealDictCursor
 
-from .config import settings
+from .config import (
+    ALLOWED_IMAGE_TYPES,
+    CAPTURED_FACES_ROOT,
+    EMBEDDING_MODEL,
+    MAX_UPLOAD_BYTES,
+)
 from .db_utils import (
-    DeviceContext,
-    QuotaExceeded,
-    authenticate_device,
-    database_is_ready,
-    get_snapshot_for_device,
-    insert_snapshot,
-    mark_failed,
+    db_healthcheck,
+    get_branch_by_pc_name,
+    get_db,
+    get_embeddings_db,
+    save_snapshot_to_db,
+    verify_bank_api_key,
+)
+from .face_utils import (
+    enhance_face,
+    match_face_id,
 )
 
-logger = logging.getLogger("face_api")
-logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+
+logging.basicConfig(
+    level=logging.INFO,
+    format=(
+        "%(asctime)s | "
+        "%(levelname)s | "
+        "%(message)s"
+    ),
+)
+
+logger = logging.getLogger(
+    "face_api"
+)
+
+
+FACE_PROCESSING_LOCK = threading.Lock()
+
 
 app = FastAPI(
-    title="Smart Customer Sentiment Ingestion API",
-    version="2.0.0",
-    docs_url="/docs" if os.getenv("ENVIRONMENT", "development") != "production" else None,
-    redoc_url=None,
+    title="Multi-bank Customer Sentiment API",
+    version="3.0",
+    description=(
+        "Automatically assigns each computer to a branch "
+        "using its Windows PC name."
+    ),
 )
 
-ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
-SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 
+def get_deepface():
+    """
+    Import DeepFace only when image processing is needed.
 
-def redis_connection() -> Redis:
-    return Redis.from_url(settings.redis_url, decode_responses=False)
-
-
-def job_queue() -> Queue:
-    return Queue("face_jobs", connection=redis_connection())
-
-
-def _extract_token(x_api_key: str | None, authorization: str | None) -> str | None:
-    if x_api_key:
-        return x_api_key.strip()
-    if authorization and authorization.startswith("Bearer "):
-        return authorization.removeprefix("Bearer ").strip()
-    return None
-
-
-def _rate_limit(device_id: int) -> None:
-    redis = redis_connection()
-    key = f"rate:upload:{device_id}"
+    This allows the API health endpoint to start even before
+    the machine-learning model has been loaded.
+    """
     try:
-        count = redis.incr(key)
-        if count == 1:
-            redis.expire(key, 60)
-        if count > settings.rate_limit_per_minute:
-            raise HTTPException(status_code=429, detail="Upload rate limit exceeded")
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error("Rate-limit backend unavailable: %s", exc.__class__.__name__)
-        raise HTTPException(status_code=503, detail="Service temporarily unavailable") from exc
+        from deepface import DeepFace
+
+        return DeepFace
+
+    except ImportError as error:
+        raise RuntimeError(
+            "DeepFace is not installed. Run: "
+            "python -m pip install deepface tensorflow"
+        ) from error
 
 
-async def require_device(
-    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
-    authorization: str | None = Header(default=None),
-) -> DeviceContext:
-    token = _extract_token(x_api_key, authorization)
-    if not token:
+def authenticate_bank(
+    x_bank_code: Annotated[
+        str | None,
+        Header(),
+    ] = None,
+
+    x_api_key: Annotated[
+        str | None,
+        Header(),
+    ] = None,
+):
+    """
+    Authenticate the bank before accepting an image.
+    """
+    if not x_bank_code or not x_api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing device API key",
+            detail=(
+                "X-Bank-Code and X-API-Key "
+                "headers are required."
+            ),
         )
 
-    device = authenticate_device(token)
-    if not device:
-        # Constant-time dummy comparison reduces observable differences.
-        secrets.compare_digest(token, "invalid-device-token")
-        raise HTTPException(status_code=401, detail="Invalid device API key")
-    return device
-
-
-@app.on_event("startup")
-def validate_startup() -> None:
-    settings.validate()
-    if not database_is_ready():
-        raise RuntimeError("Database schema is unavailable. Run Django migrations first.")
     try:
-        redis_connection().ping()
-    except Exception as exc:
-        raise RuntimeError("Redis is unavailable") from exc
+        with get_db() as database:
+            with database.cursor(
+                cursor_factory=RealDictCursor
+            ) as cursor:
+                bank = verify_bank_api_key(
+                    cursor,
+                    x_bank_code,
+                    x_api_key,
+                )
+
+    except Exception:
+        logger.exception(
+            "Bank authentication database error"
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The database is currently unavailable.",
+        )
+
+    if not bank:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=(
+                "The bank code or API key is invalid."
+            ),
+        )
+
+    return bank
+
+
+def detect_emotion(
+    face_image,
+):
+    """
+    Use DeepFace to determine the dominant emotion.
+    """
+    DeepFace = get_deepface()
+
+    analysis_result = DeepFace.analyze(
+        img_path=face_image,
+        actions=["emotion"],
+        enforce_detection=False,
+    )
+
+    if isinstance(
+        analysis_result,
+        list,
+    ):
+        analysis_result = analysis_result[0]
+
+    dominant_emotion = analysis_result[
+        "dominant_emotion"
+    ]
+
+    raw_emotion_vector = analysis_result[
+        "emotion"
+    ]
+
+    clean_emotion_vector = {
+        str(emotion_name): float(emotion_value)
+        for emotion_name, emotion_value
+        in raw_emotion_vector.items()
+    }
+
+    confidence = float(
+        clean_emotion_vector[
+            dominant_emotion
+        ]
+    )
+
+    return (
+        dominant_emotion,
+        confidence,
+        clean_emotion_vector,
+    )
+
+
+def process_face_image(
+    frame,
+    *,
+    job_id,
+    bank,
+    branch,
+    pc_name,
+    relative_image_path,
+):
+    """
+    Detect all faces, generate embeddings, match visitors,
+    analyse emotions and save the resulting records atomically.
+    """
+    DeepFace = get_deepface()
+
+    try:
+        extracted_faces = DeepFace.extract_faces(
+            img_path=frame,
+            enforce_detection=True,
+        )
+
+    except ValueError as error:
+        raise ValueError(
+            "No face was detected in the uploaded image."
+        ) from error
+
+    if not extracted_faces:
+        raise ValueError(
+            "No face was detected in the uploaded image."
+        )
+
+    with get_db() as database:
+        try:
+            with database.cursor(
+                cursor_factory=RealDictCursor
+            ) as cursor:
+                known_embeddings = get_embeddings_db(
+                    cursor,
+                    bank["id"],
+                )
+
+            saved_faces = []
+
+            for face_index, extracted_face in enumerate(
+                extracted_faces
+            ):
+                facial_area = (
+                    extracted_face.get(
+                        "facial_area"
+                    )
+                    or {}
+                )
+
+                x = max(
+                    0,
+                    int(
+                        facial_area.get(
+                            "x",
+                            0,
+                        )
+                    ),
+                )
+
+                y = max(
+                    0,
+                    int(
+                        facial_area.get(
+                            "y",
+                            0,
+                        )
+                    ),
+                )
+
+                width = int(
+                    facial_area.get(
+                        "w",
+                        0,
+                    )
+                )
+
+                height = int(
+                    facial_area.get(
+                        "h",
+                        0,
+                    )
+                )
+
+                if width > 0 and height > 0:
+                    face_image = frame[
+                        y:y + height,
+                        x:x + width,
+                    ]
+
+                else:
+                    face_image = frame
+
+                if face_image.size == 0:
+                    continue
+
+                enhanced_face = enhance_face(
+                    face_image
+                )
+
+                representation_results = DeepFace.represent(
+                    img_path=enhanced_face,
+                    model_name=EMBEDDING_MODEL,
+                    enforce_detection=False,
+                )
+
+                if not representation_results:
+                    continue
+
+                embedding = representation_results[0][
+                    "embedding"
+                ]
+
+                matched_face_id = match_face_id(
+                    embedding,
+                    known_embeddings,
+                )
+
+                face_id = (
+                    matched_face_id
+                    or str(ulid.new())
+                )
+
+                (
+                    emotion,
+                    confidence,
+                    emotion_vector,
+                ) = detect_emotion(
+                    enhanced_face
+                )
+
+                snapshot_job_id = (
+                    job_id
+                    if face_index == 0
+                    else f"{job_id}-{face_index}"
+                )
+
+                save_snapshot_to_db(
+                    database,
+
+                    job_id=snapshot_job_id,
+
+                    bank_id=bank["id"],
+
+                    branch_id=branch["id"],
+
+                    face_id=face_id,
+
+                    pc_name=pc_name,
+
+                    image_path=relative_image_path,
+
+                    embedding=embedding,
+
+                    emotion=emotion,
+
+                    confidence=confidence,
+
+                    emotion_vector=emotion_vector,
+                )
+
+                known_embeddings.append(
+                    (
+                        face_id,
+
+                        np.asarray(
+                            embedding,
+                            dtype=np.float64,
+                        ),
+                    )
+                )
+
+                saved_faces.append(
+                    {
+                        "face_id": face_id,
+                        "emotion": emotion,
+                        "confidence": confidence,
+                    }
+                )
+
+            if not saved_faces:
+                raise ValueError(
+                    "The image did not produce a valid face record."
+                )
+
+            database.commit()
+            return saved_faces
+
+        except Exception:
+            database.rollback()
+            raise
 
 
 @app.get("/")
-def root() -> dict[str, str]:
-    return {"service": "sentiment-ingestion", "status": "running"}
+def root():
+    return {
+        "status": "running",
+
+        "service": (
+            "Multi-bank customer sentiment API"
+        ),
+
+        "branch_detection": (
+            "Automatic through Windows PC name"
+        ),
+    }
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    database_status = "ok" if database_is_ready() else "unavailable"
+def health():
     try:
-        redis_status = "ok" if redis_connection().ping() else "unavailable"
+        return {
+            "status": "ok",
+            "database": db_healthcheck(),
+        }
+
     except Exception:
-        redis_status = "unavailable"
+        logger.exception(
+            "Health-check database error"
+        )
 
-    if database_status != "ok" or redis_status != "ok":
         raise HTTPException(
-            status_code=503,
-            detail={"database": database_status, "redis": redis_status},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The database is unavailable.",
         )
-    return {"status": "ok", "database": database_status, "redis": redis_status}
 
 
-@app.post("/v1/snapshots", status_code=202)
-@app.post("/upload-face", status_code=202, include_in_schema=False)
-async def upload_face(
+@app.post(
+    "/upload-face",
+    status_code=status.HTTP_201_CREATED,
+)
+def upload_face(
     file: UploadFile = File(...),
-    session_id: str | None = Form(default=None),
-    device: DeviceContext = Depends(require_device),
-) -> dict[str, object]:
-    _rate_limit(device.id)
 
-    if file.content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(status_code=415, detail="Unsupported image type")
+    pc_name: str = Form(
+        ...,
+        min_length=1,
+        max_length=128,
+    ),
 
-    data = await file.read(settings.max_upload_bytes + 1)
-    if not data:
-        raise HTTPException(status_code=400, detail="Empty upload")
-    if len(data) > settings.max_upload_bytes:
-        raise HTTPException(status_code=413, detail="Image exceeds upload limit")
-
-    expected_formats = {
-        "image/jpeg": "JPEG",
-        "image/png": "PNG",
-        "image/webp": "WEBP",
-    }
-    try:
-        Image.MAX_IMAGE_PIXELS = settings.max_image_pixels
-        with Image.open(BytesIO(data)) as image:
-            width, height = image.size
-            image_format = image.format
-            if image_format != expected_formats[file.content_type]:
-                raise HTTPException(status_code=400, detail="Image type does not match its content")
-            if width < 32 or height < 32:
-                raise HTTPException(status_code=400, detail="Image is too small")
-            if width * height > settings.max_image_pixels:
-                raise HTTPException(status_code=413, detail="Image dimensions exceed limit")
-            image.verify()
-    except HTTPException:
-        raise
-    except (UnidentifiedImageError, Image.DecompressionBombError, OSError):
-        raise HTTPException(status_code=400, detail="Invalid image")
-
-    frame = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
-    if frame is None:
-        raise HTTPException(status_code=400, detail="Invalid image")
-
-    job_id = str(ulid.new())
-    normalized_session_id = session_id or job_id
-    if not SESSION_ID_PATTERN.fullmatch(normalized_session_id):
-        raise HTTPException(status_code=400, detail="Invalid session ID")
-
-    final_path = settings.captured_faces_dir / f"{job_id}.jpg"
-    temporary_path = settings.captured_faces_dir / f".{job_id}.tmp"
-
-    encoded, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
-    if not encoded:
-        raise HTTPException(status_code=500, detail="Could not normalise image")
-
-    snapshot_id: int | None = None
-    try:
-        temporary_path.write_bytes(jpeg.tobytes())
-        temporary_path.replace(final_path)
-
-        snapshot_id = insert_snapshot(
-            job_id=job_id,
-            device=device,
-            image_path=str(final_path),
-            content_type="image/jpeg",
-            size_bytes=final_path.stat().st_size,
-            session_id=normalized_session_id,
-        )
-        job_queue().enqueue(
-            "api_server.worker.process_snapshot",
-            snapshot_id,
-            job_id=job_id,
-            job_timeout=settings.job_timeout_seconds,
-            result_ttl=3600,
-            failure_ttl=86400,
-        )
-        return {"job_id": job_id, "status": "queued"}
-
-    except QuotaExceeded as exc:
-        final_path.unlink(missing_ok=True)
-        temporary_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=429, detail=str(exc)) from exc
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception("Upload queueing failed")
-        if snapshot_id is not None:
-            try:
-                mark_failed(snapshot_id, "QueueUnavailable")
-            except Exception:
-                logger.exception("Could not mark failed snapshot")
-        final_path.unlink(missing_ok=True)
-        temporary_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=503, detail="Could not queue analysis") from exc
-
-
-@app.get("/v1/snapshots/{job_id}")
-def snapshot_status(
-    job_id: str,
-    device: DeviceContext = Depends(require_device),
-) -> dict[str, object]:
-    row = get_snapshot_for_device(job_id, device)
-    if not row:
-        raise HTTPException(status_code=404, detail="Snapshot not found")
-    row.pop("image_path", None)
-    return row
-
-
-@app.get("/v1/snapshots/{job_id}/image", include_in_schema=False)
-def snapshot_image(
-    job_id: str,
-    device: DeviceContext = Depends(require_device),
+    bank=Depends(
+        authenticate_bank
+    ),
 ):
-    if not settings.enable_dev_image_endpoint:
-        raise HTTPException(status_code=404, detail="Not found")
-    row = get_snapshot_for_device(job_id, device)
-    if not row or not row.get("image_path"):
-        raise HTTPException(status_code=404, detail="Image not found")
-    path = Path(row["image_path"]).resolve()
-    if settings.captured_faces_dir not in path.parents:
-        raise HTTPException(status_code=404, detail="Image not found")
-    return FileResponse(path)
+    """
+    Receive an image and automatically determine its branch
+    using the supplied Windows computer name.
+
+    The client is not allowed to choose a branch manually.
+    """
+    normalized_pc_name = (
+        pc_name.strip().upper()
+    )
+
+    if not normalized_pc_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A valid Windows computer name is required.",
+        )
+
+    if (
+        "/" in normalized_pc_name
+        or "\\" in normalized_pc_name
+        or normalized_pc_name in {".", ".."}
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An invalid image storage path was generated.",
+        )
+
+    if (
+        file.content_type
+        not in ALLOWED_IMAGE_TYPES
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=(
+                "Only JPEG, PNG and WebP images "
+                "are accepted."
+            ),
+        )
+
+    uploaded_data = file.file.read(
+        MAX_UPLOAD_BYTES + 1
+    )
+
+    if len(uploaded_data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="The uploaded image is too large.",
+        )
+
+    image_array = np.frombuffer(
+        uploaded_data,
+        np.uint8,
+    )
+
+    frame = cv2.imdecode(
+        image_array,
+        cv2.IMREAD_COLOR,
+    )
+
+    if frame is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded file is not a valid image.",
+        )
+
+    try:
+        with get_db() as database:
+            with database.cursor(
+                cursor_factory=RealDictCursor
+            ) as cursor:
+                branch = get_branch_by_pc_name(
+                    cursor,
+                    bank["id"],
+                    normalized_pc_name,
+                )
+
+    except Exception:
+        logger.exception(
+            "Branch lookup failed for bank=%s pc=%s",
+            bank["code"],
+            normalized_pc_name,
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "The database could not determine "
+                "the computer's branch."
+            ),
+        )
+
+    if not branch:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"Computer '{normalized_pc_name}' is not "
+                f"assigned to any active branch of "
+                f"{bank['name']}. "
+                "Configure a matching PC prefix in the "
+                "branch settings."
+            ),
+        )
+
+    job_id = str(
+        ulid.new()
+    )
+
+    relative_image_path = str(
+        Path(bank["code"])
+        / branch["code"]
+        / normalized_pc_name
+        / f"{job_id}.jpg"
+    )
+
+    absolute_image_path = (
+        CAPTURED_FACES_ROOT
+        / relative_image_path
+    ).resolve()
+
+    if (
+        CAPTURED_FACES_ROOT
+        not in absolute_image_path.parents
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An invalid image storage path was generated.",
+        )
+
+    absolute_image_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    image_saved = cv2.imwrite(
+        str(absolute_image_path),
+        frame,
+    )
+
+    if not image_saved:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The uploaded image could not be saved.",
+        )
+
+    try:
+        with FACE_PROCESSING_LOCK:
+            processed_faces = process_face_image(
+                frame,
+
+                job_id=job_id,
+
+                bank=bank,
+
+                branch=branch,
+
+                pc_name=normalized_pc_name,
+
+                relative_image_path=relative_image_path,
+            )
+
+    except ValueError as error:
+        absolute_image_path.unlink(
+            missing_ok=True
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        )
+
+    except Exception:
+        logger.exception(
+            (
+                "Face processing failed: "
+                "bank=%s branch=%s pc=%s job=%s"
+            ),
+            bank["code"],
+            branch["code"],
+            normalized_pc_name,
+            job_id,
+        )
+
+        absolute_image_path.unlink(
+            missing_ok=True
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Face and emotion processing failed.",
+        )
+
+    return {
+        "status": "processed",
+
+        "job_id": job_id,
+
+        "bank": {
+            "code": bank["code"],
+            "name": bank["name"],
+        },
+
+        "branch": {
+            "code": branch["code"],
+            "name": branch["name"],
+            "matched_pc_prefix": (
+                branch["matched_prefix"]
+            ),
+        },
+
+        "pc_name": normalized_pc_name,
+
+        "faces": processed_faces,
+    }

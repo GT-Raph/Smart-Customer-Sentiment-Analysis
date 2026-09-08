@@ -15,11 +15,10 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Compile
-        run: python -m compileall -q api_server clients emotion_dashboard tests
-      - name: API and worker unit tests
+        run: python -m compileall -q api_server clients emotion_dashboard tests desktop_capture.py
+      - name: API unit tests
         env:
           DATABASE_URL: postgresql://unused:unused@localhost/unused
-          REDIS_URL: redis://localhost:6379/0
         run: python -m unittest discover -s tests -v
       - name: Django migration and tenant tests
         working-directory: emotion_dashboard

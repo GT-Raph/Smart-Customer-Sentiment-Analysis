@@ -1,5 +1,6 @@
 # Research notebooks
 
-These notebooks are retained only as historical experiments. They are not part
-of the production runtime. Outputs and the previously committed credential have
-been removed. Use the Python API, worker and device-agent modules instead.
+These notebooks are retained only as historical experiments and are not part of
+the production runtime. Their outputs and credentials must remain removed. Use
+`api_server/face_api.py` and `desktop_capture.py` for the maintained ingestion
+path.

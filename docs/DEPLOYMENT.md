@@ -1,65 +1,78 @@
 # Deployment
 
-## Supabase configuration
+## Configure Supabase
 
-The active branch reads its configuration from the root `.env` file. On
-`main`, that file must contain the Supabase settings shown in `.env.example`.
+The `main` branch reads the root `.env` file. In the Supabase dashboard, open
+**Connect**, choose the Session pooler, and copy its values into `DB_NAME`,
+`DB_USER`, `DB_PASSWORD`, `DB_HOST`, and `DB_PORT`. Keep
+`DB_ENGINE=postgresql` and `DB_SSLMODE=require`.
 
-1. In the Supabase dashboard, open **Connect** and copy the Session pooler
-   connection string (port `5432`) for a persistent Django/API deployment.
-2. Copy `.env.example` to `.env`.
-3. Put the connection string in `SUPABASE_DB_URL`, retain
-   `?sslmode=require`, and replace the other placeholder secrets.
+The separate fields are recommended because the application safely URL-encodes
+password punctuation internally.
 
-If the database password contains URL punctuation, either URL-encode it or use
-the separate `SUPABASE_DB_*` variables shown in `.env.example`.
+Verify the connection and migration state:
 
-Before starting the services, verify the connection and apply migrations:
-
-```bash
+```powershell
 cd emotion_dashboard
-python manage.py migrate
 python manage.py showmigrations monitor
+python manage.py makemigrations --check --dry-run
+python manage.py migrate
 ```
 
-Both commands must complete against Supabase. Do not continue if Django reports
-an authentication, DNS, SSL, or migration error.
+The existing SaaS database should show `monitor.0001_initial` and
+`monitor.0002_bank_api_key_rotated_at_alter_bank_code_and_more` as applied.
+Back up production data before applying any future migration.
 
-## Local Docker development
+## Configure a tenant
 
-```bash
-cp .env.example .env
-# Add the Supabase connection and replace DJANGO_SECRET_KEY in .env
+Create the first platform administrator if needed:
+
+```powershell
+python manage.py createsuperuser
+```
+
+In Django admin, create or review the bank and its branches. Every teller PC
+must match an active branch's PC-name prefix. Set or rotate a bank upload key:
+
+```powershell
+python manage.py set_bank_api_key FIDELITY_GH
+```
+
+The raw key is displayed once; store it as `BANK_API_KEY` on the teller client.
+Do not distribute Supabase credentials or `DJANGO_SECRET_KEY` to teller PCs.
+
+## Run without Docker
+
+From `emotion_dashboard/`:
+
+```powershell
+python manage.py runserver 0.0.0.0:8000
+```
+
+From the repository root:
+
+```powershell
+python -m uvicorn api_server.face_api:app --host 0.0.0.0 --port 8001
+```
+
+The health endpoint is `http://127.0.0.1:8001/health`.
+
+## Docker development
+
+```powershell
 docker compose up --build
 ```
 
-Docker Compose runs Redis locally, but it does not create or override the
-PostgreSQL database. Django, FastAPI, and the worker all receive the same
-Supabase configuration from `.env`.
+Compose starts Django and FastAPI, passes the same Supabase configuration to
+both, and shares the private `captured_faces` volume. It does not create or
+replace the hosted database.
 
-Create the first administrator:
+## Production requirements
 
-```bash
-docker compose exec dashboard python manage.py createsuperuser
-```
-
-In Django admin, create an organisation and branch. Then create a device key:
-
-```bash
-docker compose exec dashboard python manage.py create_device_key \
-  --organization demo-company --branch 1 --name front-desk-camera \
-  --pc-name ACCRA01-CAMERA
-```
-
-Put the printed key into the client machine's `DEVICE_API_KEY` environment
-variable and run `python clients/device_agent.py` from a local Python 3.10
-environment with OpenCV, Requests and python-dotenv installed.
-
-## Production changes still required
-
-- Replace the shared Docker volume with private S3/R2/GCS-compatible storage.
-- Keep Supabase PostgreSQL and use a managed Redis service.
-- Set `DJANGO_DEBUG=false`, real hosts, trusted origins and HTTPS settings.
-- Use separate API and worker autoscaling policies.
-- Add centralized logs, metrics, error tracking, backups and recovery tests.
-- Add billing, quotas and customer self-service before commercial launch.
+- Set `DJANGO_DEBUG=False`, real allowed hosts, trusted HTTPS origins, and secure
+  proxy/cookie settings.
+- Keep secrets in the hosting platform's secret store, not in source control.
+- Replace the shared local image volume with private object storage before
+  scaling across hosts.
+- Put Django and FastAPI behind HTTPS, add monitoring/backups, and define image
+  and biometric-data retention policies.

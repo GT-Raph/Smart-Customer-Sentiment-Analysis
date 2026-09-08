@@ -1,15 +1,21 @@
-# Migration from the prototype database
+# Database migration guide
 
-The prototype used several incompatible versions of `captured_snapshots`. The
-new version deliberately uses a clean, migration-owned schema.
+The `main` branch is aligned with the existing multi-bank Supabase schema. Its
+authoritative Django migrations are:
 
-1. Back up the current database before doing anything.
-2. Rotate the exposed database password and Django secret key.
-3. For the safest upgrade, use a new Supabase project/database for this version.
-4. Run `python manage.py migrate` from `emotion_dashboard/`.
-5. Create an organisation, branch, administrator and device.
-6. Import only reviewed historical analytics. Do not bulk-copy raw face images
-   or embeddings unless you have a valid consent and retention basis.
+1. `monitor.0001_initial`
+2. `monitor.0002_bank_api_key_rotated_at_alter_bank_code_and_more`
 
-Do not point the new code at the old production table and run destructive SQL.
-The old table should remain read-only until any required migration is verified.
+Before deploying a code or schema change:
+
+1. Create and verify a Supabase backup.
+2. Run `python manage.py showmigrations monitor` against the intended database.
+3. Run `python manage.py makemigrations --check --dry-run`.
+4. Review generated SQL for any new migration before applying it.
+5. Run `python manage.py migrate` during a controlled deployment window.
+6. Test a platform administrator, bank administrator, branch user, and upload
+   request after deployment.
+
+Never manually recreate Django-owned tables in phpMyAdmin or the Supabase SQL
+editor. Do not copy the `non-saas` MySQL schema into the SaaS database or merge
+its database configuration into `main`.

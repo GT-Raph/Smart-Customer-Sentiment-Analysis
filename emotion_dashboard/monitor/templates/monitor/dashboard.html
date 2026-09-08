@@ -1,407 +1,824 @@
 {% extends "monitor/base.html" %}
-{% load static %}
 
-{% block page_title %}Dashboard Overview{% endblock %}
+{% block title %}
+    Dashboard | Customer Sentiment
+{% endblock %}
+
+{% block page_title %}
+    Dashboard Overview
+{% endblock %}
 
 {% block content %}
-<style>
-    .badge-emotion {
-        font-size: 0.875em;
-        min-width: 75px;
-        text-align: center;
-        color: white;
-    }
-    .badge-happy { background-color: #FFD166; color: #000; }
-    .badge-neutral { background-color: #8A8A8A; }
-    .badge-sad { background-color: #118AB2; }
-    .badge-angry { background-color: #EF476F; }
-    .badge-surprise { background-color: #8338EC; }
-    
-    .summary-card {
-        transition: transform 0.2s;
-        border-radius: 12px;
-        overflow: hidden;
-    }
-    .summary-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-    }
-    
-    .emotion-icon {
-        font-size: 1.5rem;
-    }
-    
-    /* Emotion color classes for text */
-    .text-happy { color: #FFD166; }
-    .text-sad { color: #118AB2; }
-    .text-angry { color: #EF476F; }
-    .text-neutral { color: #8A8A8A; }
-    .text-surprise { color: #8338EC; }
-</style>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-
-<div class="container-fluid">
-    <div class="row mb-3">
-        <div class="col">
-            <h6 class="text-muted"><i class="fas fa-building me-2"></i>Viewing data for: <strong>{{ branch_name }}</strong></h6>
+<div class="bento-grid">
+    <section class="bento-card accent-card span-8">
+        <div class="bento-kicker">
+            Live sentiment intelligence
         </div>
-    </div>
 
-    <div class="row mb-4">
-        <!-- Total Visitors Card -->
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card summary-card h-100 border-0 shadow-sm">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-muted mb-2"><i class="fas fa-users me-1"></i>Total Visitors</h6>
-                            <h3 class="mb-0">{{ total_visitors }}</h3>
-                        </div>
-                        <div class="bg-primary bg-opacity-10 p-3 rounded">
-                            <i class="fas fa-user-friends text-primary emotion-icon"></i>
-                        </div>
-                    </div>
-                    <p class="text-muted mb-0 mt-2">
-                        <i class="fas fa-arrow-up text-success me-1"></i>
-                        <span class="text-success fw-bold">+{{ visitor_growth }}%</span> from last week
-                    </p>
-                </div>
+        <div class="d-flex justify-content-between align-items-start gap-3">
+            <div>
+                <h2 class="fw-bold mb-2">
+                    {{ branch_name }}
+                </h2>
+
+                <p class="text-soft mb-0">
+                    Customer emotion, visitor activity and
+                    branch-performance monitoring.
+                </p>
+            </div>
+
+            <div class="icon-box">
+                <i class="bi bi-stars"></i>
             </div>
         </div>
-        
-        <!-- Top Emotion Card -->
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card summary-card h-100 border-0 shadow-sm">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-muted mb-2"><i class="fas fa-star me-1"></i>Top Emotion Today</h6>
-                            <h3 class="mb-0">
-                                <span class="badge badge-{{ top_emotion.emotion }} badge-emotion">
-                                    {{ top_emotion.emotion|title }}
-                                </span>
-                            </h3>
-                        </div>
-                        <div class="bg-{{ top_emotion.emotion }} bg-opacity-10 p-3 rounded">
-                            {% if top_emotion.emotion == 'happy' %}
-                                <i class="fas fa-smile text-happy emotion-icon"></i>
-                            {% elif top_emotion.emotion == 'sad' %}
-                                <i class="fas fa-sad-tear text-sad emotion-icon"></i>
-                            {% elif top_emotion.emotion == 'angry' %}
-                                <i class="fas fa-angry text-angry emotion-icon"></i>
-                            {% elif top_emotion.emotion == 'surprise' %}
-                                <i class="fas fa-surprise text-surprise emotion-icon"></i>
+    </section>
+
+    <section class="bento-card span-4">
+        <div class="bento-kicker">
+            Filters
+        </div>
+
+        <form
+            method="get"
+            class="d-grid gap-2"
+        >
+            {% if request.user.is_bank_admin %}
+                <div
+                    class="dropdown ui-select"
+                    data-ui-select
+                >
+                    <input
+                        type="hidden"
+                        name="branch"
+                        value="{{ selected_branch }}"
+                    >
+
+                    <button
+                        class="ui-select-toggle dropdown-toggle"
+                        type="button"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                    >
+                        <span data-ui-select-label>
+                            {% if selected_branch %}
+                                {% for branch in branches %}
+                                    {% if selected_branch == branch.id|stringformat:"s" %}
+                                        {% if request.user.is_superuser %}
+                                            {{ branch.bank.code }} —
+                                        {% endif %}
+
+                                        {{ branch.name }}
+                                    {% endif %}
+                                {% endfor %}
                             {% else %}
-                                <i class="fas fa-meh text-neutral emotion-icon"></i>
+                                All permitted branches
                             {% endif %}
-                        </div>
-                    </div>
-                    <p class="text-muted mb-0 mt-2">
-                        <i class="fas fa-chart-pie me-1"></i>{{ top_emotion.percentage }}% of all detections
-                    </p>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Negative Emotions Card -->
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card summary-card h-100 border-0 shadow-sm">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-muted mb-2"><i class="fas fa-frown me-1"></i>Negative Emotions</h6>
-                            <h3 class="mb-0">{{ negative_percentage }}%</h3>
-                        </div>
-                        <div class="bg-warning bg-opacity-10 p-3 rounded">
-                            <i class="fas fa-frown-open text-warning emotion-icon"></i>
-                        </div>
-                    </div>
-                    <p class="text-muted mb-0 mt-2">
-                        <i class="fas fa-arrow-up text-danger me-1"></i>
-                        <span class="text-danger fw-bold">+{{ negative_growth }}%</span> from yesterday
-                    </p>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Activity Level Card -->
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card summary-card h-100 border-0 shadow-sm">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-muted mb-2"><i class="fas fa-chart-line me-1"></i>Branch Activity</h6>
-                            <h3 class="mb-0">{{ activity_level }}</h3>
-                        </div>
-                        <div class="bg-info bg-opacity-10 p-3 rounded">
-                            <i class="fas fa-bolt text-info emotion-icon"></i>
-                        </div>
-                    </div>
-                    <p class="text-muted mb-0 mt-2">
-                        <i class="fas fa-clock me-1"></i>Peak time: {{ peak_time }}
-                    </p>
-                </div>
-            </div>
-        </div>
-    </div>
+                        </span>
 
-    <!-- Charts Section -->
-    <div class="row mb-4">
-        <div class="col-md-8">
-            <div class="card h-100 border-0 shadow-sm">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Emotion Trend (Last {{ trend_days }} Days)</h6>
-                    <div class="dropdown">
-                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" 
-                                data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-calendar me-1"></i>
-                            {% if time_range == 'day' %}Today
-                            {% elif time_range == 'week' %}This Week
-                            {% elif time_range == 'month' %}This Month
-                            {% else %}Last {{ trend_days }} Days{% endif %}
-                        </button>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="?range=day"><i class="fas fa-calendar-day me-2"></i>Today</a></li>
-                            <li><a class="dropdown-item" href="?range=week"><i class="fas fa-calendar-week me-2"></i>This Week</a></li>
-                            <li><a class="dropdown-item" href="?range=month"><i class="fas fa-calendar-alt me-2"></i>This Month</a></li>
-                            <li><a class="dropdown-item" href="?range=14days"><i class="fas fa-history me-2"></i>Last 14 Days</a></li>
-                        </ul>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <canvas id="trendChart" height="300"></canvas>
-                </div>
-            </div>
-        </div>
-        
-        <div class="col-md-4">
-            <div class="card h-100 border-0 shadow-sm">
-                <div class="card-header bg-white">
-                    <h6 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Emotion Distribution</h6>
-                </div>
-                <div class="card-body">
-                    {% if total_detections > 0 %}
-                    <canvas id="emotionChart" height="300"></canvas>
-                    {% else %}
-                    <div class="alert alert-warning text-center py-4">
-                        <i class="fas fa-chart-pie fa-2x mb-3 text-muted"></i>
-                        <p class="mb-0">No emotion data available</p>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
+                        <i class="bi bi-chevron-down ui-select-chevron"></i>
+                    </button>
 
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0"><i class="fas fa-clock me-2"></i>Hourly Emotion Activity</h6>
-                    <div class="dropdown">
-                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" 
-                                data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-calendar me-1"></i>
-                            {% if hourly_range == 'yesterday' %}Yesterday
-                            {% else %}Today{% endif %}
+                    <div class="dropdown-menu ui-select-menu">
+                        <button
+                            type="button"
+                            class="ui-select-option {% if not selected_branch %}active{% endif %}"
+                            data-ui-select-option
+                            data-value=""
+                            data-label="All permitted branches"
+                        >
+                            All permitted branches
                         </button>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="?hourly=today"><i class="fas fa-sun me-2"></i>Today</a></li>
-                            <li><a class="dropdown-item" href="?hourly=yesterday"><i class="fas fa-moon me-2"></i>Yesterday</a></li>
-                        </ul>
+
+                        {% for branch in branches %}
+                            <button
+                                type="button"
+                                class="ui-select-option {% if selected_branch == branch.id|stringformat:'s' %}active{% endif %}"
+                                data-ui-select-option
+                                data-value="{{ branch.id }}"
+                                data-label="{% if request.user.is_superuser %}{{ branch.bank.code }} — {% endif %}{{ branch.name }}"
+                            >
+                                {% if request.user.is_superuser %}
+                                    {{ branch.bank.code }} —
+                                {% endif %}
+
+                                {{ branch.name }}
+                            </button>
+                        {% endfor %}
                     </div>
                 </div>
-                <div class="card-body">
-                    {% if total_detections > 0 %}
-                    <canvas id="activityChart" height="250"></canvas>
-                    {% else %}
-                    <div class="alert alert-warning text-center py-4">
-                        <i class="fas fa-clock fa-2x mb-3 text-muted"></i>
-                        <p class="mb-0">No hourly data available</p>
+            {% endif %}
+
+            <div class="d-flex gap-2">
+                <div
+                    class="dropdown ui-select flex-grow-1"
+                    data-ui-select
+                >
+                    <input
+                        type="hidden"
+                        name="range"
+                        value="{{ time_range }}"
+                    >
+
+                    <button
+                        class="ui-select-toggle dropdown-toggle"
+                        type="button"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                    >
+                        <span data-ui-select-label>
+                            {% if time_range == "day" %}
+                                Today
+                            {% elif time_range == "week" %}
+                                Last 7 days
+                            {% elif time_range == "month" %}
+                                Last 30 days
+                            {% else %}
+                                Last 14 days
+                            {% endif %}
+                        </span>
+
+                        <i class="bi bi-chevron-down ui-select-chevron"></i>
+                    </button>
+
+                    <div class="dropdown-menu ui-select-menu">
+                        <button
+                            type="button"
+                            class="ui-select-option {% if time_range == 'day' %}active{% endif %}"
+                            data-ui-select-option
+                            data-value="day"
+                            data-label="Today"
+                        >
+                            Today
+                        </button>
+
+                        <button
+                            type="button"
+                            class="ui-select-option {% if time_range == 'week' %}active{% endif %}"
+                            data-ui-select-option
+                            data-value="week"
+                            data-label="Last 7 days"
+                        >
+                            Last 7 days
+                        </button>
+
+                        <button
+                            type="button"
+                            class="ui-select-option {% if time_range == '14days' %}active{% endif %}"
+                            data-ui-select-option
+                            data-value="14days"
+                            data-label="Last 14 days"
+                        >
+                            Last 14 days
+                        </button>
+
+                        <button
+                            type="button"
+                            class="ui-select-option {% if time_range == 'month' %}active{% endif %}"
+                            data-ui-select-option
+                            data-value="month"
+                            data-label="Last 30 days"
+                        >
+                            Last 30 days
+                        </button>
                     </div>
-                    {% endif %}
+                </div>
+
+                <input
+                    type="hidden"
+                    name="hourly"
+                    value="{{ hourly_range }}"
+                >
+
+                <button
+                    type="submit"
+                    class="btn btn-primary px-3"
+                    aria-label="Apply filters"
+                >
+                    <i class="bi bi-funnel"></i>
+                </button>
+            </div>
+        </form>
+    </section>
+
+    <section class="bento-card span-3">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <div class="metric-label">
+                    Today's visitors
+                </div>
+
+                <div class="metric-value">
+                    {{ total_visitors }}
+                </div>
+            </div>
+
+            <div class="metric-icon text-cyan">
+                <i class="bi bi-people"></i>
+            </div>
+        </div>
+
+        <div
+            class="metric-change {% if visitor_growth < 0 %}text-red{% else %}text-green{% endif %}"
+        >
+            {% if visitor_growth >= 0 %}
+                <i class="bi bi-arrow-up-right"></i>
+            {% else %}
+                <i class="bi bi-arrow-down-right"></i>
+            {% endif %}
+
+            {{ visitor_growth }}% from yesterday
+        </div>
+    </section>
+
+    <section class="bento-card span-3">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <div class="metric-label">
+                    Top emotion
+                </div>
+
+                <div class="metric-value text-capitalize">
+                    {{ top_emotion.emotion }}
+                </div>
+            </div>
+
+            <div class="metric-icon emotion-{{ top_emotion.emotion }}">
+                {% if top_emotion.emotion == "happy" %}
+                    <i class="bi bi-emoji-smile"></i>
+                {% elif top_emotion.emotion == "sad" %}
+                    <i class="bi bi-emoji-frown"></i>
+                {% elif top_emotion.emotion == "angry" %}
+                    <i class="bi bi-emoji-angry"></i>
+                {% elif top_emotion.emotion == "surprise" %}
+                    <i class="bi bi-emoji-surprise"></i>
+                {% elif top_emotion.emotion == "neutral" %}
+                    <i class="bi bi-emoji-neutral"></i>
+                {% else %}
+                    <i class="bi bi-question-circle"></i>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="metric-change text-soft">
+            {{ top_emotion.percentage }}%
+            of today's detections
+        </div>
+    </section>
+
+    <section class="bento-card span-3">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <div class="metric-label">
+                    Negative emotions
+                </div>
+
+                <div class="metric-value">
+                    {{ negative_percentage }}%
+                </div>
+            </div>
+
+            <div class="metric-icon text-red">
+                <i class="bi bi-emoji-frown"></i>
+            </div>
+        </div>
+
+        <div
+            class="metric-change {% if negative_growth > 0 %}text-red{% else %}text-green{% endif %}"
+        >
+            {% if negative_growth > 0 %}
+                <i class="bi bi-arrow-up-right"></i>
+            {% else %}
+                <i class="bi bi-arrow-down-right"></i>
+            {% endif %}
+
+            {{ negative_growth }}% from yesterday
+        </div>
+    </section>
+
+    <section class="bento-card green-card span-3">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <div class="metric-label">
+                    Today's activity
+                </div>
+
+                <div class="metric-value">
+                    {{ total_detections }}
+                </div>
+            </div>
+
+            <div class="metric-icon text-green">
+                <i class="bi bi-activity"></i>
+            </div>
+        </div>
+
+        <div class="metric-change text-soft">
+            {{ activity_level }}
+            ·
+            Peak {{ peak_time }}
+        </div>
+    </section>
+
+    <section class="bento-card span-4">
+        <div class="section-header">
+            <div>
+                <h3 class="bento-title">
+                    Today's emotion mix
+                </h3>
+
+                <div class="bento-subtitle">
+                    Distribution of detected emotions
+                </div>
+            </div>
+
+            <div class="icon-box">
+                <i class="bi bi-pie-chart"></i>
+            </div>
+        </div>
+
+        <div class="chart-wrapper">
+            <div class="chart-canvas-shell">
+                <canvas id="emotionDistributionChart"></canvas>
+
+                <div
+                    class="chart-empty-state"
+                    id="emotionDistributionEmpty"
+                >
+                    <div class="chart-empty-icon">
+                        <i class="bi bi-pie-chart"></i>
+                    </div>
+
+                    <div class="chart-empty-title">
+                        No emotion data yet
+                    </div>
+
+                    <div class="chart-empty-text">
+                        Captured customer emotions will appear here.
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+    </section>
+
+    <section class="bento-card span-8">
+        <div class="section-header">
+            <div>
+                <h3 class="bento-title">
+                    Emotion trend
+                </h3>
+
+                <div class="bento-subtitle">
+                    Changes throughout the selected period
+                </div>
+            </div>
+
+            <span class="status-chip">
+                {{ trend_days }} days
+            </span>
+        </div>
+
+        <div class="chart-wrapper">
+            <div class="chart-canvas-shell">
+                <canvas id="emotionTrendChart"></canvas>
+
+                <div
+                    class="chart-empty-state"
+                    id="emotionTrendEmpty"
+                >
+                    <div class="chart-empty-icon">
+                        <i class="bi bi-graph-up"></i>
+                    </div>
+
+                    <div class="chart-empty-title">
+                        No trend data available
+                    </div>
+
+                    <div class="chart-empty-text">
+                        The trend graph will appear after emotion
+                        detections have been recorded.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="bento-card span-12">
+        <div class="section-header">
+            <div>
+                <h3 class="bento-title">
+                    Hourly emotion activity
+                </h3>
+
+                <div class="bento-subtitle">
+                    Emotion detections grouped by hour
+                </div>
+            </div>
+
+            <form
+                method="get"
+                class="d-flex gap-2"
+            >
+                {% if selected_branch %}
+                    <input
+                        type="hidden"
+                        name="branch"
+                        value="{{ selected_branch }}"
+                    >
+                {% endif %}
+
+                <input
+                    type="hidden"
+                    name="range"
+                    value="{{ time_range }}"
+                >
+
+                <div
+                    class="dropdown ui-select"
+                    data-ui-select
+                    style="min-width: 155px;"
+                >
+                    <input
+                        type="hidden"
+                        name="hourly"
+                        value="{{ hourly_range }}"
+                    >
+
+                    <button
+                        class="ui-select-toggle dropdown-toggle"
+                        type="button"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                    >
+                        <span data-ui-select-label>
+                            {% if hourly_range == "yesterday" %}
+                                Yesterday
+                            {% else %}
+                                Today
+                            {% endif %}
+                        </span>
+
+                        <i class="bi bi-chevron-down ui-select-chevron"></i>
+                    </button>
+
+                    <div class="dropdown-menu ui-select-menu">
+                        <button
+                            type="button"
+                            class="ui-select-option {% if hourly_range == 'today' %}active{% endif %}"
+                            data-ui-select-option
+                            data-value="today"
+                            data-label="Today"
+                        >
+                            Today
+                        </button>
+
+                        <button
+                            type="button"
+                            class="ui-select-option {% if hourly_range == 'yesterday' %}active{% endif %}"
+                            data-ui-select-option
+                            data-value="yesterday"
+                            data-label="Yesterday"
+                        >
+                            Yesterday
+                        </button>
+                    </div>
+                </div>
+
+                <button
+                    type="submit"
+                    class="btn btn-outline-primary"
+                >
+                    Update
+                </button>
+            </form>
+        </div>
+
+        <div class="chart-wrapper large">
+            <div class="chart-canvas-shell">
+                <canvas id="hourlyEmotionChart"></canvas>
+
+                <div
+                    class="chart-empty-state"
+                    id="hourlyEmotionEmpty"
+                >
+                    <div class="chart-empty-icon">
+                        <i class="bi bi-bar-chart"></i>
+                    </div>
+
+                    <div class="chart-empty-title">
+                        No hourly activity
+                    </div>
+
+                    <div class="chart-empty-text">
+                        There are no emotion detections for this day.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 </div>
 {% endblock %}
 
 {% block chart_scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    // Emotion colors
-    const emotionColors = {
-        'happy': '#FFD166',
-        'sad': '#118AB2', 
-        'angry': '#EF476F',
-        'neutral': '#8A8A8A',
-        'surprise': '#8338EC',
-        'none': '#6C757D'
-    };
+    document.addEventListener(
+        "DOMContentLoaded",
+        function () {
+            const Charts =
+                window.SentimentCharts;
 
-    // Emotion Distribution Chart
-    {% if total_detections > 0 %}
-    const emotionCtx = document.getElementById('emotionChart').getContext('2d');
-    new Chart(emotionCtx, {
-        type: 'doughnut',
-        data: {
-            labels: {{ emotion_labels|safe }},
-            datasets: [{
-                data: {{ emotion_data|safe }},
-                backgroundColor: {{ emotion_colors|safe }},
-                borderWidth: 2,
-                borderColor: '#fff'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { 
-                    position: 'right',
-                    labels: {
-                        padding: 20,
-                        usePointStyle: true,
-                        pointStyle: 'circle'
-                    }
-                },
-                tooltip: {
-                    callbacks: {
-                        label: (context) => {
-                            const total = {{ total_detections }};
-                            const value = context.raw || 0;
-                            const percentage = ((value / total) * 100).toFixed(1);
-                            return `${context.label}: ${value} (${percentage}%)`;
+            const emotionLabels =
+                {{ emotion_labels|default:"[]"|safe }};
+
+            const emotionData =
+                {{ emotion_data|default:"[]"|safe }};
+
+            const emotionColors =
+                {{ emotion_colors|default:"[]"|safe }};
+
+            const trendLabels =
+                {{ trend_labels|default:"[]"|safe }};
+
+            const trendDatasets =
+                {{ trend_datasets|default:"[]"|safe }};
+
+            const hourlyLabels =
+                {{ hourly_labels|default:"[]"|safe }};
+
+            const hourlyHappy =
+                {{ hourly_happy|default:"[]"|safe }};
+
+            const hourlyNeutral =
+                {{ hourly_neutral|default:"[]"|safe }};
+
+            const hourlySad =
+                {{ hourly_sad|default:"[]"|safe }};
+
+            const hourlyAngry =
+                {{ hourly_angry|default:"[]"|safe }};
+
+            const hourlySurprise =
+                {{ hourly_surprise|default:"[]"|safe }};
+
+            /*
+             * Emotion distribution
+             */
+
+            const emotionHasData =
+                Charts.hasData(
+                    emotionData
+                );
+
+            Charts.setEmptyState(
+                "emotionDistributionChart",
+                "emotionDistributionEmpty",
+                emotionHasData
+            );
+
+            if (emotionHasData) {
+                new Chart(
+                    document.getElementById(
+                        "emotionDistributionChart"
+                    ),
+                    {
+                        type: "doughnut",
+
+                        data: {
+                            labels: emotionLabels,
+
+                            datasets: [{
+                                data: emotionData,
+                                backgroundColor: emotionColors,
+                                borderColor: "#121824",
+                                borderWidth: 4,
+                                hoverBorderColor: "#121824",
+                                hoverOffset: 9,
+                                spacing: 2
+                            }]
+                        },
+
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            cutout: "72%",
+
+                            plugins: {
+                                legend: Charts.legend(
+                                    "bottom"
+                                ),
+
+                                tooltip: Charts.tooltip()
+                            }
                         }
                     }
-                }
-            },
-            cutout: '60%'
-        }
-    });
-    {% endif %}
+                );
+            }
 
-    // Emotion Trend Chart
-    const trendCtx = document.getElementById('trendChart').getContext('2d');
-    new Chart(trendCtx, {
-        type: 'bar',
-        data: {
-            labels: {{ trend_labels|safe }},
-            datasets: {{ trend_datasets|safe }}
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: { 
-                x: { 
-                    stacked: true,
-                    title: { display: true, text: 'Date' },
-                    grid: { display: false }
-                },
-                y: { 
-                    stacked: true,
-                    title: { display: true, text: 'Number of Detections' },
-                    beginAtZero: true,
-                    grid: { color: 'rgba(0, 0, 0, 0.05)' }
+            /*
+             * Trend chart
+             */
+
+            trendDatasets.forEach(
+                function (dataset) {
+                    const emotionName =
+                        String(
+                            dataset.label
+                            || ""
+                        ).toLowerCase();
+
+                    const color =
+                        Charts.colors[
+                            emotionName
+                        ]
+                        || Charts.colors.purple;
+
+                    dataset.borderColor =
+                        color;
+
+                    dataset.backgroundColor =
+                        Charts.rgba(
+                            color,
+                            0.08
+                        );
+
+                    dataset.borderWidth = 2.5;
+                    dataset.pointRadius = 0;
+                    dataset.pointHoverRadius = 5;
+                    dataset.pointHitRadius = 12;
+                    dataset.tension = 0.38;
+                    dataset.fill = false;
                 }
-            },
-            plugins: {
-                legend: { 
-                    position: 'top',
-                    labels: { usePointStyle: true }
+            );
+
+            const trendHasData =
+                Charts.datasetsHaveData(
+                    trendDatasets
+                );
+
+            Charts.setEmptyState(
+                "emotionTrendChart",
+                "emotionTrendEmpty",
+                trendHasData
+            );
+
+            if (trendHasData) {
+                new Chart(
+                    document.getElementById(
+                        "emotionTrendChart"
+                    ),
+                    {
+                        type: "line",
+
+                        data: {
+                            labels: trendLabels,
+                            datasets: trendDatasets
+                        },
+
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+
+                            interaction: {
+                                mode: "index",
+                                intersect: false
+                            },
+
+                            plugins: {
+                                legend: Charts.legend(
+                                    "bottom"
+                                ),
+
+                                tooltip: Charts.tooltip()
+                            },
+
+                            scales: {
+                                x: Charts.xScale(
+                                    false
+                                ),
+
+                                y: Charts.yScale(
+                                    false
+                                )
+                            }
+                        }
+                    }
+                );
+            }
+
+            /*
+             * Hourly stacked bars
+             */
+
+            const hourlyDatasets = [
+                {
+                    label: "Happy",
+                    data: hourlyHappy,
+                    backgroundColor:
+                        Charts.colors.happy
                 },
-                tooltip: { 
-                    mode: 'index', 
-                    intersect: false,
-                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                    padding: 10
+                {
+                    label: "Neutral",
+                    data: hourlyNeutral,
+                    backgroundColor:
+                        Charts.colors.neutral
+                },
+                {
+                    label: "Sad",
+                    data: hourlySad,
+                    backgroundColor:
+                        Charts.colors.sad
+                },
+                {
+                    label: "Angry",
+                    data: hourlyAngry,
+                    backgroundColor:
+                        Charts.colors.angry
+                },
+                {
+                    label: "Surprise",
+                    data: hourlySurprise,
+                    backgroundColor:
+                        Charts.colors.surprise
                 }
+            ];
+
+            hourlyDatasets.forEach(
+                function (dataset) {
+                    dataset.borderWidth = 0;
+                    dataset.borderRadius = 6;
+                    dataset.borderSkipped = false;
+                    dataset.maxBarThickness = 32;
+                }
+            );
+
+            const hourlyHasData =
+                Charts.datasetsHaveData(
+                    hourlyDatasets
+                );
+
+            Charts.setEmptyState(
+                "hourlyEmotionChart",
+                "hourlyEmotionEmpty",
+                hourlyHasData
+            );
+
+            if (hourlyHasData) {
+                new Chart(
+                    document.getElementById(
+                        "hourlyEmotionChart"
+                    ),
+                    {
+                        type: "bar",
+
+                        data: {
+                            labels: hourlyLabels,
+                            datasets: hourlyDatasets
+                        },
+
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+
+                            interaction: {
+                                mode: "index",
+                                intersect: false
+                            },
+
+                            plugins: {
+                                legend: Charts.legend(
+                                    "bottom"
+                                ),
+
+                                tooltip: Charts.tooltip()
+                            },
+
+                            scales: {
+                                x: Charts.xScale(
+                                    true
+                                ),
+
+                                y: Charts.yScale(
+                                    true
+                                )
+                            }
+                        }
+                    }
+                );
             }
         }
-    });
+    );
 
-    // Hourly Activity Chart
-    {% if total_detections > 0 %}
-    const activityCtx = document.getElementById('activityChart').getContext('2d');
-    new Chart(activityCtx, {
-        type: 'line',
-        data: {
-            labels: {{ hourly_labels|safe }},
-            datasets: [
-                { 
-                    label: 'Happy', 
-                    data: {{ hourly_happy|safe }}, 
-                    borderColor: emotionColors.happy,
-                    backgroundColor: emotionColors.happy + '20',
-                    tension: 0.4,
-                    borderWidth: 3,
-                    fill: true
-                },
-                { 
-                    label: 'Neutral', 
-                    data: {{ hourly_neutral|safe }}, 
-                    borderColor: emotionColors.neutral,
-                    backgroundColor: emotionColors.neutral + '20',
-                    tension: 0.4,
-                    borderWidth: 3,
-                    fill: true
-                },
-                { 
-                    label: 'Sad', 
-                    data: {{ hourly_sad|safe }}, 
-                    borderColor: emotionColors.sad,
-                    backgroundColor: emotionColors.sad + '20',
-                    tension: 0.4,
-                    borderWidth: 3,
-                    fill: true
-                },
-                { 
-                    label: 'Angry', 
-                    data: {{ hourly_angry|safe }}, 
-                    borderColor: emotionColors.angry,
-                    backgroundColor: emotionColors.angry + '20',
-                    tension: 0.4,
-                    borderWidth: 3,
-                    fill: true
-                },
-                { 
-                    label: 'Surprise', 
-                    data: {{ hourly_surprise|safe }}, 
-                    borderColor: emotionColors.surprise,
-                    backgroundColor: emotionColors.surprise + '20',
-                    tension: 0.4,
-                    borderWidth: 3,
-                    fill: true
-                }
-            ]
+const refreshSeconds =
+    Number(
+        "{{ dashboard_preferences.auto_refresh_seconds|default:0 }}"
+    );
+
+if (refreshSeconds > 0) {
+    window.setTimeout(
+        function () {
+            window.location.reload();
         },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { 
-                legend: { 
-                    position: 'top',
-                    labels: { usePointStyle: true }
-                } 
-            },
-            scales: {
-                y: { 
-                    beginAtZero: true, 
-                    title: { text: 'Detections', display: true },
-                    grid: { color: 'rgba(0, 0, 0, 0.05)' }
-                },
-                x: { 
-                    title: { text: 'Hour of Day', display: true },
-                    grid: { display: false }
-                }
-            },
-            interaction: {
-                intersect: false,
-                mode: 'index'
-            }
-        }
-    });
-    {% endif %}
+        refreshSeconds * 1000
+    );
+}
 </script>
 {% endblock %}

@@ -84,17 +84,26 @@ def database_from_environment() -> dict[str, object]:
     if database_url:
         return database_from_url(database_url)
 
+    engine = os.getenv("DB_ENGINE", "postgresql").strip().lower()
+    if engine not in {"postgres", "postgresql", "django.db.backends.postgresql"}:
+        raise RuntimeError("DB_ENGINE must be PostgreSQL on the SaaS main branch")
+
     names = {
-        "NAME": "SUPABASE_DB_NAME",
-        "USER": "SUPABASE_DB_USER",
-        "PASSWORD": "SUPABASE_DB_PASSWORD",
-        "HOST": "SUPABASE_DB_HOST",
-        "PORT": "SUPABASE_DB_PORT",
+        "NAME": ("SUPABASE_DB_NAME", "DB_NAME"),
+        "USER": ("SUPABASE_DB_USER", "DB_USER"),
+        "PASSWORD": ("SUPABASE_DB_PASSWORD", "DB_PASSWORD"),
+        "HOST": ("SUPABASE_DB_HOST", "DB_HOST"),
+        "PORT": ("SUPABASE_DB_PORT", "DB_PORT"),
     }
-    supplied = {key: os.getenv(env_name, "").strip() for key, env_name in names.items()}
-    supplied["PASSWORD"] = os.getenv("SUPABASE_DB_PASSWORD", "")
+    supplied = {
+        key: (os.getenv(primary) or os.getenv(alias, "")).strip()
+        for key, (primary, alias) in names.items()
+    }
+    supplied["PASSWORD"] = os.getenv("SUPABASE_DB_PASSWORD") or os.getenv(
+        "DB_PASSWORD", ""
+    )
     if any(supplied.values()):
-        missing = [env_name for key, env_name in names.items() if not supplied[key]]
+        missing = [alias for key, (_, alias) in names.items() if not supplied[key]]
         if missing:
             raise RuntimeError(
                 "Incomplete Supabase database configuration; missing " + ", ".join(missing)
@@ -102,9 +111,9 @@ def database_from_environment() -> dict[str, object]:
         try:
             port = int(supplied["PORT"])
         except ValueError as exc:
-            raise RuntimeError("SUPABASE_DB_PORT must be an integer") from exc
+            raise RuntimeError("DB_PORT must be an integer") from exc
         if not 1 <= port <= 65535:
-            raise RuntimeError("SUPABASE_DB_PORT must be between 1 and 65535")
+            raise RuntimeError("DB_PORT must be between 1 and 65535")
         return {
             "ENGINE": "django.db.backends.postgresql",
             "NAME": supplied["NAME"],
@@ -114,12 +123,15 @@ def database_from_environment() -> dict[str, object]:
             "PORT": str(port),
             "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "60")),
             "CONN_HEALTH_CHECKS": True,
-            "OPTIONS": {"sslmode": os.getenv("SUPABASE_DB_SSLMODE", "require")},
+            "OPTIONS": {
+                "sslmode": os.getenv("SUPABASE_DB_SSLMODE")
+                or os.getenv("DB_SSLMODE", "require")
+            },
         }
 
     raise RuntimeError(
-        "Supabase database configuration is required. Set SUPABASE_DB_URL "
-        "or the SUPABASE_DB_* variables in .env."
+        "Supabase database configuration is required. Set the DB_* variables "
+        "or SUPABASE_DB_URL in .env."
     )
 
 
@@ -142,7 +154,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.humanize",
-    "monitor",
+    "monitor.apps.MonitorConfig",
 ]
 
 MIDDLEWARE = [
@@ -167,6 +179,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "monitor.context_processors.user_preferences",
             ],
         },
     }
@@ -185,7 +198,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = os.getenv("DJANGO_TIME_ZONE", "UTC")
+TIME_ZONE = os.getenv("DJANGO_TIME_ZONE") or os.getenv("TIME_ZONE", "UTC")
 USE_I18N = True
 USE_TZ = True
 
@@ -193,15 +206,19 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [path for path in [BASE_DIR / "static"] if path.exists()]
 
-# Raw biometric images are not exposed through Django. The API/worker stores
-# them in private storage and deletes them by default after processing.
+# Face images remain outside publicly served static and media paths. Access is
+# provided only through the tenant-scoped authenticated snapshot view.
+CAPTURED_FACES_ROOT = Path(
+    os.getenv("CAPTURED_FACES_ROOT", str(PROJECT_ROOT / "captured_faces"))
+).expanduser().resolve()
+
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 AUTH_USER_MODEL = "monitor.CustomUser"
-LOGIN_URL = "/login/"
-LOGIN_REDIRECT_URL = "/dashboard/"
-LOGOUT_REDIRECT_URL = "/"
+LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "dashboard"
+LOGOUT_REDIRECT_URL = "login"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

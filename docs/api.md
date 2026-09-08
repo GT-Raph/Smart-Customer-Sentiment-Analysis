@@ -1,53 +1,53 @@
 # Ingestion API
 
-Base URL for local development: `http://localhost:8001`
+Local base URL: `http://127.0.0.1:8001`
 
-Every device request must include the key created by Django:
+## Authentication
+
+Every upload includes the bank code and the raw upload key:
 
 ```http
-X-API-Key: scs_<prefix>_<secret>
+X-Bank-Code: FIDELITY_GH
+X-API-Key: <bank-upload-key>
 ```
 
-The server stores only the SHA-256 hash of the full key. A key is shown once by
-`python manage.py create_device_key` and can be revoked by disabling its Device
-record in Django admin.
+Create or rotate a key from the Django project directory with:
+
+```powershell
+python manage.py set_bank_api_key FIDELITY_GH
+```
+
+The database stores only its hash.
 
 ## `GET /health`
 
-Checks PostgreSQL and Redis. Returns HTTP 503 when either dependency is down.
+Checks the Supabase PostgreSQL connection. It returns HTTP 200 when healthy and
+HTTP 503 when the database is unavailable.
 
-## `POST /v1/snapshots`
+## `POST /upload-face`
 
-Uploads one cropped face as `multipart/form-data` field `file`.
+Uploads one image as `multipart/form-data`:
 
-Accepted formats: JPEG, PNG and WebP. The declared content type must match the
-actual file. Byte-size, decoded dimensions and per-device rate limits apply.
+- `file`: JPEG, PNG, or WebP image.
+- `pc_name`: Windows computer name, 1-128 characters.
 
-The device supplies a short-lived `session_id` so repeated frames during one visit are not counted as different visitors when biometric identification is disabled.
+The API authenticates the bank, finds the longest matching active branch PC
+prefix, validates the image and size, runs face/expression analysis, stores the
+snapshot, and returns HTTP 201.
 
-Organisation subscription status and the monthly analysis quota are checked before the job is accepted. A full quota returns HTTP 429.
-
-Successful response:
+Example response shape:
 
 ```json
 {
-  "job_id": "01J...",
-  "status": "queued"
+  "status": "processed",
+  "job_id": "01...",
+  "bank": {"code": "FIDELITY_GH", "name": "..."},
+  "branch": {"code": "...", "name": "...", "matched_pc_prefix": "..."},
+  "pc_name": "ACCRA01-PC01",
+  "faces": []
 }
 ```
 
-The legacy path `/upload-face` points to the same handler but is hidden from the
-OpenAPI schema.
-
-## `GET /v1/snapshots/{job_id}`
-
-Returns status for a job created by the same device. Devices cannot read jobs
-belonging to another device or organisation.
-
-Possible states: `queued`, `processing`, `processed`, `failed`.
-
-## Raw images
-
-There is no public image-listing endpoint. A development-only authenticated
-image endpoint exists behind `ENABLE_DEV_IMAGE_ENDPOINT=true`; keep it disabled
-in production. The worker deletes raw images after processing by default.
+An unknown PC prefix returns HTTP 403. Invalid authentication returns HTTP 401;
+invalid images return a safe 4xx response. There is no public raw-image listing
+endpoint.

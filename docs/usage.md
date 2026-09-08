@@ -1,69 +1,53 @@
 # Development usage
 
-Python 3.10 is recommended because the pinned TensorFlow worker dependency is
-built for that runtime.
+Python 3.10 is recommended for the pinned TensorFlow and DeepFace versions.
 
-## Docker path
+## Install
 
-```bash
-cp .env.example .env
-# Paste the Supabase Session pooler URL and set a random DJANGO_SECRET_KEY
-docker compose up --build
-```
-
-Then:
-
-```bash
-docker compose exec dashboard python manage.py createsuperuser
-```
-
-Open the Django admin, create an organisation and branch, and generate a device
-key as described in `DEPLOYMENT.md`.
-
-## Separate local environments
-
-The web/API test environment deliberately excludes TensorFlow:
-
-```bash
-python -m venv .venv
-. .venv/bin/activate
+```powershell
+py -3.10 -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+Copy-Item .env.example .env
 ```
 
-Create a separate Python 3.10 worker environment:
+Fill `.env` with the Supabase Session pooler details, Django settings, and bank
+client credentials. Both server processes read this root file.
 
-```bash
-python -m venv .venv-worker
-. .venv-worker/bin/activate
-pip install -r api_server/requirements-worker.txt
-python -m api_server.worker_main
-```
+## Run the services
 
-Start the API:
+Start Django in one terminal:
 
-```bash
-uvicorn api_server.face_api:app --host 0.0.0.0 --port 8001
-```
-
-Start Django from `emotion_dashboard/`:
-
-```bash
+```powershell
+cd emotion_dashboard
 python manage.py migrate
 python manage.py runserver 8000
 ```
 
-All three server-side processes read `.env`. The desktop client connects
-to the ingestion API and never connects directly to Supabase.
+Start FastAPI from the repository root in a second terminal:
+
+```powershell
+python -m uvicorn api_server.face_api:app --host 127.0.0.1 --port 8001
+```
+
+Start the teller camera client from the repository root in a third terminal:
+
+```powershell
+python desktop_capture.py
+```
+
+The client connects only to FastAPI. It does not receive or require Supabase
+credentials when deployed to a teller machine; use a client-only `.env` there
+containing `FACE_API_URL`, `BANK_CODE`, `BANK_API_KEY`, and capture settings.
 
 ## Tests
 
-```bash
-DATABASE_URL=postgresql://unused:unused@localhost/unused \
-REDIS_URL=redis://localhost:6379/0 \
+```powershell
 python -m unittest discover -s tests -v
-
 cd emotion_dashboard
-DJANGO_DEBUG=true DJANGO_SECRET_KEY=test-only \
-DATABASE_URL=sqlite:////tmp/sentiment-tests.sqlite3 \
-python manage.py test monitor
+python manage.py makemigrations --check --dry-run
+python manage.py test monitor -v 2
 ```
+
+The unit tests mock database calls. Django tests use SQLite in CI so they do not
+modify hosted tenant data.

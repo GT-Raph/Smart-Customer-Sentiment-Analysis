@@ -1,42 +1,33 @@
 # Fixes applied
 
-## Completed in this revision
+## Completed
 
-- Removed all committed database credentials and the committed Django secret.
-- Removed public and debug media exposure of raw face images.
-- Replaced the global optional API key with one-time, revocable device keys.
-- Added organisations, subscription states, branches, devices and monthly usage.
-- Added an atomic monthly quota check before accepting analysis jobs.
-- Replaced the conflicting snapshot schemas with one Django-managed schema.
-- Replaced the polling processing notebook with a Redis/RQ worker.
-- Kept DeepFace/TensorFlow out of the FastAPI web process.
-- Added bounded upload reads, real file-format checks, dimension limits and rate limits.
-- Added job status, safe client errors and failed-job recording.
-- Disabled persistent biometric matching by default.
-- Added short-lived visit sessions for privacy-preserving visitor counts.
-- Added organisation-scoped nearest-neighbour matching when identification is enabled.
-- Added default raw-image deletion after successful processing.
-- Added a low-rate camera client with offline queue limits.
-- Added Docker development deployment, CI and dependency-update configuration.
-- Added migration, deployment, API, architecture and security documentation.
+- Restored the original multi-bank SaaS domain: banks, branches, tenant users,
+  visitors, snapshots, bank settings, and user preferences.
+- Pointed Django and FastAPI at the same Supabase PostgreSQL database through
+  root `.env` `DB_*` settings.
+- Preserved the polished SaaS dashboard and tenant navigation from `main`.
+- Restored bank-scoped upload authentication with hashed API keys.
+- Restored automatic branch selection from the teller PC-name prefix.
+- Restored synchronous DeepFace expression analysis and Supabase persistence.
+- Added bounded image uploads, decoded-image validation, and private image paths.
+- Kept the separate `non-saas` branch unmerged.
+- Added Docker development services, tests, and current deployment guidance.
 
 ## Verified
 
-- Python compilation completed successfully.
-- 11 API/worker tests pass.
-- 7 Django access/onboarding tests pass.
-- Django reports no pending model migrations.
-- Django's production deployment check reports no issues with production-like settings.
-- The FastAPI OpenAPI schema builds successfully without loading DeepFace.
-- No previously exposed credential, database host or Django secret remains in the revised tree.
+- Django recognizes both existing `monitor` migrations with no model changes.
+- The supplied Supabase database is reachable by Django and FastAPI.
+- Existing bank, branch, user, and analytics records load in the SaaS dashboard.
+- The supplied bank upload credential matches its stored hash.
+- Django and FastAPI both start successfully and return HTTP 200 responses.
+- Fifteen API/config tests and seven Django tenant tests pass.
 
 ## Still required before a commercial public launch
 
-- Rotate the original database password and purge it from the private Git history.
-- Use a new database or carefully migrate reviewed data from the incompatible prototype schema.
-- Replace the single-host shared image volume with private object storage.
-- Integrate Stripe, Paystack or another payment provider with subscription webhooks.
-- Add customer self-service onboarding, invoices, exports, deletion and retention controls.
-- Add centralized logs, metrics, tracing, alerts, backups and recovery drills.
-- Conduct legal/privacy review and a model validation study using consented target-environment data.
-- Add liveness/anti-spoofing before enabling persistent identity recognition.
+- Rotate credentials that were shared outside the deployment secret store.
+- Move captured images to private object storage for multi-host deployment.
+- Add billing, subscriptions, customer onboarding, and retention controls.
+- Add centralized logs, metrics, alerts, backups, and recovery exercises.
+- Complete legal/privacy review and validate the model in the intended setting.
+- Add liveness/anti-spoofing if persistent visitor matching is used.
