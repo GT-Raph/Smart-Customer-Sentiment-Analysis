@@ -46,3 +46,7 @@ and database when another organization needs the system.
 - Every camera is authenticated with a revocable device API key.
 - Normal dashboard users only see their assigned branch.
 - Results are expression signals, not verified internal emotions.
+- The camera agent has no live preview and releases the camera between brief
+  sampling attempts.
+- Teller pauses are finite leases that expire automatically; unavailable cameras
+  use retry backoff instead of terminating the agent.

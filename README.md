@@ -69,10 +69,12 @@ deployment guide, then run:
 ```
 
 Sign in to `http://127.0.0.1:8000/admin/` after starting Django and create a
-branch. Then generate a camera key using that branch's ID:
+branch. The branch ID is the number in its admin page URL. Then generate a
+camera key using that actual ID (the example below uses `2`):
 
 ```powershell
-.\.venv\Scripts\python.exe emotion_dashboard\manage.py create_device_key --branch 1 --name front-desk-camera --pc-name ACCRA01-CAMERA
+$branchId = 2
+.\.venv\Scripts\python.exe emotion_dashboard\manage.py create_device_key --branch $branchId --name front-desk-camera --pc-name ACCRA01-CAMERA
 ```
 
 Copy the generated key into `DEVICE_API_KEY` in `.env`. The key is displayed
@@ -124,10 +126,42 @@ On later starts, activate `.venv-worker` and run only the final command.
 
 ### Terminal 4: Camera client
 
+The camera client has no live preview. It appears only as a Sentiment Grid icon
+in the Windows notification area. For each sample it opens the camera briefly,
+captures one frame, and releases the camera before processing or uploading. If
+another application is using the camera, the agent backs off and retries
+automatically.
+
+Start it in the foreground once to confirm its configuration:
+
 ```powershell
 .\.venv\Scripts\Activate.ps1
 .\.venv\Scripts\python.exe clients\device_agent.py
 ```
+
+Right-click the tray icon to pause for 15 minutes, 30 minutes, one hour, or
+until the configured end of shift. Pauses expire automatically and survive an
+agent or computer restart. The agent sends a notification shortly before
+capture resumes. There is intentionally no permanent teller-level pause.
+
+After verifying it, stop the foreground agent with `Ctrl+C`, then start the tray
+agent without a console window:
+
+```powershell
+Start-Process -FilePath ".\.venv\Scripts\pythonw.exe" -ArgumentList "clients\device_agent.py" -WorkingDirectory (Get-Location)
+```
+
+Administrators can also control the same finite pause lease from PowerShell:
+
+```powershell
+.\.venv\Scripts\python.exe clients\device_agent.py --pause 30 --reason "Customer video call"
+.\.venv\Scripts\python.exe clients\device_agent.py --status
+.\.venv\Scripts\python.exe clients\device_agent.py --resume
+```
+
+For console-only troubleshooting, use `--no-tray`. The tray status changes to
+**Camera busy** while another application owns the camera and returns to
+**Active** after the camera becomes available.
 
 Keep XAMPP MySQL, Redis, Django, FastAPI, and the worker running while using the
 camera client. Stop a foreground service with `Ctrl+C`. Stop Redis when finished

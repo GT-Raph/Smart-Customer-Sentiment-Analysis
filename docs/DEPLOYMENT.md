@@ -23,7 +23,8 @@ Open `http://localhost:8000/admin/`, sign in, and create at least one Branch.
 Then create a key for each camera, using the branch ID shown in Django admin:
 
 ```powershell
-py manage.py create_device_key --branch 1 --name front-desk-camera --pc-name ACCRA01-CAMERA
+$branchId = 2  # Replace with the actual ID shown on the branch admin page.
+py manage.py create_device_key --branch $branchId --name front-desk-camera --pc-name ACCRA01-CAMERA
 ```
 
 Copy the printed key immediately into `DEVICE_API_KEY` on that camera computer.

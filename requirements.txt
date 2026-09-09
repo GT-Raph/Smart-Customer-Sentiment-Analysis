@@ -2,4 +2,5 @@
 -r emotion_dashboard/requirements.txt
 scipy>=1.10,<2
 requests>=2.32,<3
+pystray>=0.19,<1
 pytest>=8,<9

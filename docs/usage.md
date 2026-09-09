@@ -61,6 +61,28 @@ python manage.py migrate
 python manage.py runserver 8000
 ```
 
+## Background camera agent
+
+The desktop agent never displays camera frames. It acquires the camera only long
+enough to sample a frame, releases it immediately, and waits before the next
+sample. A camera already in use is treated as a temporary busy state rather
+than a fatal error.
+
+On Windows, start `clients/device_agent.py` normally to get notification-area
+controls. Tellers can choose only finite pauses; each pause is stored with an
+expiry timestamp and resumes automatically even if the agent or computer was
+restarted. `SHIFT_END_HOUR` controls the **Until end of shift** option.
+
+Administrators can use the command line without opening a camera preview:
+
+```powershell
+.\.venv\Scripts\python.exe clients\device_agent.py --pause 30 --reason "Customer video call"
+.\.venv\Scripts\python.exe clients\device_agent.py --status
+.\.venv\Scripts\python.exe clients\device_agent.py --resume
+```
+
+Use `--no-tray` only for console-only troubleshooting.
+
 With `DATABASE_ENGINE=mysql`, Django, the ingestion API, and the worker all use
 the XAMPP database. Run migrations before the first start. SQLite remains
 available only for isolated tests by setting `DATABASE_ENGINE=sqlite`; the API
