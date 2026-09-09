@@ -1,0 +1,4 @@
+# Install after the base requirements. Keeping notebook tooling separate avoids
+# reinstalling camera libraries while the local services are running.
+jupyterlab>=4,<5
+ipykernel>=6,<8

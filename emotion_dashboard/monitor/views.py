@@ -1191,6 +1191,14 @@ def branch_detail(
         ) in counts.items()
     ]
 
+    visits = list(queryset[:20])
+    for visit in visits:
+        visit.confidence_percent = (
+            round(float(visit.confidence) * 100, 1)
+            if visit.confidence is not None
+            else None
+        )
+
     return render(
         request,
         (
@@ -1203,7 +1211,7 @@ def branch_detail(
             ),
 
             "visits": (
-                queryset[:20]
+                visits
             ),
 
             "total_emotions": (

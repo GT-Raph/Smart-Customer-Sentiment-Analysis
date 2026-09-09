@@ -6,7 +6,7 @@ import json
 import secrets
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterator
 
 import numpy as np
@@ -123,6 +123,65 @@ def get_snapshot(snapshot_id: int) -> dict[str, Any] | None:
         return dict(row) if row else None
 
 
+def get_recent_session_emotions(
+    *,
+    snapshot_id: int,
+    device_id: int,
+    session_id: str,
+    captured_at: datetime,
+    window_seconds: float,
+    limit: int,
+) -> list[tuple[int, dict[str, float]]]:
+    """Return recent raw emotion vectors for this device session."""
+    if not session_id or limit < 1:
+        return []
+
+    if captured_at.tzinfo is not None:
+        captured_at = captured_at.astimezone(timezone.utc).replace(tzinfo=None)
+    window_start = captured_at - timedelta(seconds=window_seconds)
+
+    with database() as db, db.cursor(DictCursor) as cursor:
+        cursor.execute(
+            """
+            SELECT id, emotion_vector
+              FROM captured_snapshots
+             WHERE device_id = %s
+               AND session_id = %s
+               AND id <> %s
+               AND status = 'processed'
+               AND processed = 1
+               AND emotion_vector IS NOT NULL
+               AND timestamp BETWEEN %s AND %s
+             ORDER BY timestamp DESC, id DESC
+             LIMIT %s
+            """,
+            (
+                device_id,
+                session_id,
+                snapshot_id,
+                window_start,
+                captured_at,
+                int(limit),
+            ),
+        )
+
+        results: list[tuple[int, dict[str, float]]] = []
+        for row in cursor.fetchall():
+            value = row["emotion_vector"]
+            try:
+                if isinstance(value, bytes):
+                    value = value.decode("utf-8")
+                if isinstance(value, str):
+                    value = json.loads(value)
+                if not isinstance(value, dict):
+                    continue
+                vector = {str(key).lower(): float(score) for key, score in value.items()}
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            results.append((int(row["id"]), vector))
+        return results
+
+
 def get_snapshot_for_device(job_id: str, device: DeviceContext) -> dict[str, Any] | None:
     with database() as db, db.cursor(DictCursor) as cursor:
         cursor.execute(
@@ -224,6 +283,7 @@ def complete_snapshot(
     emotion_vector: dict[str, float],
     embedding: list[float] | None,
     image_path: str | None,
+    consensus_snapshot_ids: list[int] | None = None,
 ) -> None:
     with database() as db, db.cursor() as cursor:
         completed_at = utc_now_for_database()
@@ -257,6 +317,24 @@ def complete_snapshot(
                 snapshot_id,
             ),
         )
+
+        consensus_ids = [
+            int(item)
+            for item in (consensus_snapshot_ids or [])
+            if int(item) != snapshot_id
+        ]
+        if consensus_ids:
+            placeholders = ", ".join(["%s"] * len(consensus_ids))
+            cursor.execute(
+                f"""
+                UPDATE captured_snapshots
+                   SET emotion = %s,
+                       confidence = %s
+                 WHERE status = 'processed'
+                   AND id IN ({placeholders})
+                """,
+                (emotion, confidence, *consensus_ids),
+            )
 
 
 def database_is_ready() -> bool:

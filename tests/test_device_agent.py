@@ -69,6 +69,24 @@ class PauseControllerTests(unittest.TestCase):
 
 
 class CameraReleaseTests(unittest.TestCase):
+    def test_burst_captures_multiple_images_before_releasing_camera(self):
+        frames = [np.full((10, 10, 3), value, dtype=np.uint8) for value in range(3)]
+        camera = FakeCamera(True, [(True, frame) for frame in frames])
+
+        with patch.object(device_agent.cv2, "VideoCapture", return_value=camera):
+            result = device_agent.capture_frames(
+                warmup_frames=1,
+                warmup_delay_seconds=0,
+                active_seconds=1,
+                max_images=3,
+                image_interval_seconds=0,
+            )
+
+        self.assertEqual(len(result), 3)
+        self.assertIs(result[0], frames[0])
+        self.assertIs(result[2], frames[2])
+        self.assertTrue(camera.released)
+
     def test_camera_is_released_after_a_successful_capture(self):
         frame = np.zeros((10, 10, 3), dtype=np.uint8)
         camera = FakeCamera(True, [(True, frame)])
@@ -83,9 +101,15 @@ class CameraReleaseTests(unittest.TestCase):
         camera = FakeCamera(False, [])
 
         with patch.object(device_agent.cv2, "VideoCapture", return_value=camera):
-            result = device_agent.capture_frame(warmup_frames=1, warmup_delay_seconds=0)
+            result = device_agent.capture_frames(
+                warmup_frames=1,
+                warmup_delay_seconds=0,
+                active_seconds=1,
+                max_images=3,
+                image_interval_seconds=0,
+            )
 
-        self.assertIsNone(result)
+        self.assertEqual(result, [])
         self.assertTrue(camera.released)
 
 

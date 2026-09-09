@@ -294,8 +294,8 @@
                             </td>
 
                             <td>
-                                {% if visit.confidence != None %}
-                                    {{ visit.confidence|floatformat:1 }}%
+                                {% if visit.confidence_percent != None %}
+                                    {{ visit.confidence_percent|floatformat:1 }}%
                                 {% else %}
                                     —
                                 {% endif %}

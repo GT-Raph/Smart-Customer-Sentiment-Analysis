@@ -124,13 +124,24 @@ python -m pip install -r api_server\requirements-worker.txt
 
 On later starts, activate `.venv-worker` and run only the final command.
 
+The first start downloads the RetinaFace detector weights (about 119 MB). The
+worker uses the original colour crop, rejects images that are too small, blurry,
+dark, or overexposed, and combines up to three predictions captured within four
+seconds. A result is stored as `uncertain` when there are too few usable images,
+the highest probability is below 55%, or the top two probabilities are less
+than 10 percentage points apart. These controls are configurable through the
+`EMOTION_*` values in `.env`; calibrate them against consented images from the
+actual camera position before changing the defaults.
+
 ### Terminal 4: Camera client
 
 The camera client has no live preview. It appears only as a Sentiment Grid icon
-in the Windows notification area. For each sample it opens the camera briefly,
-captures one frame, and releases the camera before processing or uploading. If
-another application is using the camera, the agent backs off and retries
-automatically.
+in the Windows notification area. For each sample it opens the camera for a
+bounded two-second window, captures up to three images, and releases the camera
+before processing or uploading. If another application is using the camera,
+the agent backs off and retries automatically. You can tune the burst with
+`CAMERA_ACTIVE_SECONDS`, `MAX_IMAGES_PER_CAMERA_SESSION`, and
+`BURST_IMAGE_INTERVAL_SECONDS` in `.env`.
 
 Start it in the foreground once to confirm its configuration:
 
@@ -162,6 +173,34 @@ Administrators can also control the same finite pause lease from PowerShell:
 For console-only troubleshooting, use `--no-tray`. The tray status changes to
 **Camera busy** while another application owns the camera and returns to
 **Active** after the camera becomes available.
+
+### Legacy Jupyter face capture
+
+The legacy notebook workflow is available for supervised testing. Stop any
+separately running tray agent first so only one process accesses the camera.
+
+Install the notebook tools and open the notebook:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-notebook.txt
+.\.venv\Scripts\python.exe -m jupyter lab research\legacy_notebooks\desktop_capture.ipynb
+```
+
+Run `desktop_capture.ipynb` from the first cell through **ENTRY POINT**. It sends
+captures to the ingestion API without displaying a live camera feed. The other
+legacy notebooks retain their original research logic:
+
+- `main.ipynb` analyzes sample image files and has no database connection.
+- `process-faces.ipynb` reads XAMPP settings from `.env` for legacy batch processing.
+- `prototype.ipynb` reads XAMPP settings from `.env`, but still contains its
+  original live-preview prototype and is not suitable for the bank deployment.
+
+The notebooks now share the `MYSQL_*` values in `.env`. Their processing code
+has otherwise been preserved. `process-faces.ipynb` and `prototype.ipynb` still
+reference tables or columns from the older research schema that are not present
+in the migrated application database; connection succeeds, but those processing
+cells require a separate schema migration before they can replace the current
+API worker safely.
 
 Keep XAMPP MySQL, Redis, Django, FastAPI, and the worker running while using the
 camera client. Stop a foreground service with `Ctrl+C`. Stop Redis when finished

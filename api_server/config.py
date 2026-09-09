@@ -82,6 +82,21 @@ class Settings:
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "ArcFace")
     match_threshold: float = _as_float("MATCH_THRESHOLD", 0.45)
     enable_face_identification: bool = _as_bool("ENABLE_FACE_IDENTIFICATION", False)
+    emotion_detector_backend: str = os.getenv(
+        "EMOTION_DETECTOR_BACKEND", "retinaface"
+    ).strip().lower()
+    emotion_expand_percentage: int = _as_int("EMOTION_EXPAND_PERCENTAGE", 10)
+    emotion_smoothing_frames: int = _as_int("EMOTION_SMOOTHING_FRAMES", 3)
+    emotion_smoothing_window_seconds: float = _as_float(
+        "EMOTION_SMOOTHING_WINDOW_SECONDS", 4.0
+    )
+    emotion_min_samples: int = _as_int("EMOTION_MIN_SAMPLES", 2)
+    emotion_min_confidence: float = _as_float("EMOTION_MIN_CONFIDENCE", 0.55)
+    emotion_min_margin: float = _as_float("EMOTION_MIN_MARGIN", 0.10)
+    emotion_min_face_size: int = _as_int("EMOTION_MIN_FACE_SIZE", 80)
+    emotion_min_sharpness: float = _as_float("EMOTION_MIN_SHARPNESS", 25.0)
+    emotion_min_brightness: float = _as_float("EMOTION_MIN_BRIGHTNESS", 25.0)
+    emotion_max_brightness: float = _as_float("EMOTION_MAX_BRIGHTNESS", 230.0)
     delete_raw_image_after_processing: bool = _as_bool(
         "DELETE_RAW_IMAGE_AFTER_PROCESSING", True
     )
@@ -97,6 +112,30 @@ class Settings:
             raise RuntimeError("MAX_UPLOAD_BYTES is unreasonably small")
         if self.rate_limit_per_minute < 1:
             raise RuntimeError("RATE_LIMIT_PER_MINUTE must be positive")
+        if not self.emotion_detector_backend:
+            raise RuntimeError("EMOTION_DETECTOR_BACKEND is required")
+        if self.emotion_expand_percentage < 0:
+            raise RuntimeError("EMOTION_EXPAND_PERCENTAGE cannot be negative")
+        if self.emotion_smoothing_frames < 1:
+            raise RuntimeError("EMOTION_SMOOTHING_FRAMES must be at least 1")
+        if self.emotion_smoothing_window_seconds <= 0:
+            raise RuntimeError("EMOTION_SMOOTHING_WINDOW_SECONDS must be positive")
+        if not 1 <= self.emotion_min_samples <= self.emotion_smoothing_frames:
+            raise RuntimeError(
+                "EMOTION_MIN_SAMPLES must be between 1 and EMOTION_SMOOTHING_FRAMES"
+            )
+        if not 0 <= self.emotion_min_confidence <= 1:
+            raise RuntimeError("EMOTION_MIN_CONFIDENCE must be between 0 and 1")
+        if not 0 <= self.emotion_min_margin <= 1:
+            raise RuntimeError("EMOTION_MIN_MARGIN must be between 0 and 1")
+        if self.emotion_min_face_size < 48:
+            raise RuntimeError("EMOTION_MIN_FACE_SIZE must be at least 48")
+        if self.emotion_min_sharpness < 0:
+            raise RuntimeError("EMOTION_MIN_SHARPNESS cannot be negative")
+        if not 0 <= self.emotion_min_brightness < self.emotion_max_brightness <= 255:
+            raise RuntimeError(
+                "EMOTION brightness limits must satisfy 0 <= minimum < maximum <= 255"
+            )
 
 
 settings = Settings()

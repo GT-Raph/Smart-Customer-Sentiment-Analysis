@@ -158,6 +158,13 @@ class DashboardUiSmokeTests(TestCase):
         self.assertContains(response, 'href="/settings/"')
         self.assertContains(response, "Self-hosted intelligence")
 
+    def test_branch_detail_displays_normalised_confidence_as_a_percentage(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.get(f"/branch/{self.branch.pk}/")
+
+        self.assertContains(response, "95.0%")
+
     def test_logout_is_post_only(self):
         self.client.force_login(self.admin)
 

@@ -1,8 +1,9 @@
 """Consent-aware desktop camera agent for the ingestion API.
 
 The agent has no live camera preview. It briefly acquires the camera for each
-sampling attempt and always releases it before processing or uploading the
-frame, allowing other desktop applications to use the camera between samples.
+sampling attempt, captures a bounded burst of frames, and always releases it
+before processing or uploading, allowing other desktop applications to use the
+camera between samples.
 """
 
 from __future__ import annotations
@@ -41,6 +42,9 @@ CAPTURE_INTERVAL_SECONDS = float(
 CAMERA_BUSY_RETRY_SECONDS = float(os.getenv("CAMERA_BUSY_RETRY_SECONDS", "15"))
 CAMERA_WARMUP_FRAMES = int(os.getenv("CAMERA_WARMUP_FRAMES", "3"))
 CAMERA_WARMUP_DELAY_SECONDS = float(os.getenv("CAMERA_WARMUP_DELAY_SECONDS", "0.08"))
+CAMERA_ACTIVE_SECONDS = float(os.getenv("CAMERA_ACTIVE_SECONDS", "2"))
+MAX_IMAGES_PER_CAMERA_SESSION = int(os.getenv("MAX_IMAGES_PER_CAMERA_SESSION", "3"))
+BURST_IMAGE_INTERVAL_SECONDS = float(os.getenv("BURST_IMAGE_INTERVAL_SECONDS", "0.75"))
 REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "15"))
 LOCAL_QUEUE = Path(os.getenv("LOCAL_CAPTURE_QUEUE", "queued_captures")).resolve()
 MAX_QUEUED_IMAGES = int(os.getenv("MAX_QUEUED_IMAGES", "100"))
@@ -173,6 +177,12 @@ def validate_config() -> None:
         raise RuntimeError("CAMERA_BUSY_RETRY_SECONDS must be positive")
     if CAMERA_WARMUP_FRAMES < 1:
         raise RuntimeError("CAMERA_WARMUP_FRAMES must be at least 1")
+    if CAMERA_ACTIVE_SECONDS <= 0:
+        raise RuntimeError("CAMERA_ACTIVE_SECONDS must be positive")
+    if MAX_IMAGES_PER_CAMERA_SESSION < 1:
+        raise RuntimeError("MAX_IMAGES_PER_CAMERA_SESSION must be at least 1")
+    if BURST_IMAGE_INTERVAL_SECONDS < 0:
+        raise RuntimeError("BURST_IMAGE_INTERVAL_SECONDS cannot be negative")
     if not 0 <= SHIFT_END_HOUR <= 23:
         raise RuntimeError("SHIFT_END_HOUR must be between 0 and 23")
     LOCAL_QUEUE.mkdir(parents=True, exist_ok=True)
@@ -230,27 +240,71 @@ def largest_face(frame):
     return frame[y1:y2, x1:x2]
 
 
-def capture_frame(
+def capture_frames(
     camera_index: int = CAMERA_INDEX,
     warmup_frames: int = CAMERA_WARMUP_FRAMES,
     warmup_delay_seconds: float = CAMERA_WARMUP_DELAY_SECONDS,
-):
-    """Capture one frame and release the camera before returning."""
+    active_seconds: float = CAMERA_ACTIVE_SECONDS,
+    max_images: int = MAX_IMAGES_PER_CAMERA_SESSION,
+    image_interval_seconds: float = BURST_IMAGE_INTERVAL_SECONDS,
+) -> list:
+    """Capture a short frame burst and release the camera before returning."""
     camera = cv2.VideoCapture(camera_index)
     try:
         if not camera.isOpened():
-            return None
+            return []
 
+        deadline = time.monotonic() + max(0.0, active_seconds)
         frame = None
         for index in range(max(1, warmup_frames)):
             ok, candidate = camera.read()
             if ok:
                 frame = candidate
             if index + 1 < warmup_frames and warmup_delay_seconds > 0:
-                time.sleep(warmup_delay_seconds)
-        return frame
+                remaining = max(0.0, deadline - time.monotonic())
+                time.sleep(min(warmup_delay_seconds, remaining))
+
+        frames = [frame] if frame is not None and max_images > 0 else []
+        if not frames or len(frames) >= max_images:
+            return frames
+
+        next_image_at = time.monotonic() + max(0.0, image_interval_seconds)
+        while len(frames) < max_images:
+            now = time.monotonic()
+            if now >= deadline:
+                break
+
+            wait_seconds = min(max(0.0, next_image_at - now), deadline - now)
+            if wait_seconds > 0:
+                time.sleep(wait_seconds)
+            if time.monotonic() >= deadline:
+                break
+
+            ok, candidate = camera.read()
+            if not ok:
+                break
+            frames.append(candidate)
+            next_image_at = time.monotonic() + max(0.0, image_interval_seconds)
+        return frames
     finally:
         camera.release()
+
+
+def capture_frame(
+    camera_index: int = CAMERA_INDEX,
+    warmup_frames: int = CAMERA_WARMUP_FRAMES,
+    warmup_delay_seconds: float = CAMERA_WARMUP_DELAY_SECONDS,
+):
+    """Capture one frame using the burst capture path (compatibility helper)."""
+    frames = capture_frames(
+        camera_index=camera_index,
+        warmup_frames=warmup_frames,
+        warmup_delay_seconds=warmup_delay_seconds,
+        active_seconds=0,
+        max_images=1,
+        image_interval_seconds=0,
+    )
+    return frames[0] if frames else None
 
 
 def _end_of_shift(now: datetime | None = None) -> datetime:
@@ -381,9 +435,12 @@ class DeviceAgent:
                 self._wait(min(1.0, next_capture_at - now))
                 continue
 
-            self._set_status("Sampling", "camera in use briefly")
-            frame = capture_frame()
-            if frame is None:
+            self._set_status(
+                "Sampling",
+                f"camera in use for up to {CAMERA_ACTIVE_SECONDS:g} seconds",
+            )
+            frames = capture_frames()
+            if not frames:
                 self._set_status(
                     "Camera busy",
                     f"retrying in {CAMERA_BUSY_RETRY_SECONDS:g} seconds",
@@ -392,14 +449,14 @@ class DeviceAgent:
                 continue
 
             # The camera is already released here. If a pause arrived during the
-            # brief capture, discard this frame rather than processing it.
+            # brief capture, discard the burst rather than processing it.
             if self.pause_controller.active():
                 continue
 
-            self._set_status("Active", "camera released")
+            self._set_status("Processing", f"{len(frames)} images; camera released")
             next_capture_at = time.monotonic() + CAPTURE_INTERVAL_SECONDS
-            face = largest_face(frame)
-            if face is None:
+            faces = [face for frame in frames if (face := largest_face(frame)) is not None]
+            if not faces:
                 session_expired = (
                     current_session_id
                     and time.monotonic() - last_face_seen > SESSION_RESET_SECONDS
@@ -412,17 +469,29 @@ class DeviceAgent:
             if current_session_id is None:
                 current_session_id = uuid.uuid4().hex
 
-            encoded, jpeg = cv2.imencode(".jpg", face, [cv2.IMWRITE_JPEG_QUALITY, 88])
-            if not encoded:
-                continue
-
-            payload = jpeg.tobytes()
             try:
                 flush_queue()
-                if not upload_image(payload, current_session_id):
-                    queue_locally(payload, current_session_id)
             except requests.RequestException:
-                queue_locally(payload, current_session_id)
+                pass
+
+            for face in faces:
+                if self.pause_controller.active() or self.stop_event.is_set():
+                    break
+
+                encoded, jpeg = cv2.imencode(
+                    ".jpg",
+                    face,
+                    [cv2.IMWRITE_JPEG_QUALITY, 88],
+                )
+                if not encoded:
+                    continue
+
+                payload = jpeg.tobytes()
+                try:
+                    if not upload_image(payload, current_session_id):
+                        queue_locally(payload, current_session_id)
+                except requests.RequestException:
+                    queue_locally(payload, current_session_id)
 
 
 def _status_message(controller: PauseController) -> str:
