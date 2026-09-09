@@ -4,7 +4,7 @@ import types
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import call, Mock, patch
 
 import cv2
 import numpy as np
@@ -22,6 +22,27 @@ class FakeDeepFace:
 
 
 class WorkerTests(unittest.TestCase):
+    def test_warm_models_loads_emotion_as_a_facial_attribute(self):
+        deepface = Mock()
+
+        with (
+            patch.object(worker, "get_deepface", return_value=deepface),
+            patch.object(
+                worker,
+                "settings",
+                SimpleNamespace(
+                    enable_face_identification=True,
+                    embedding_model="ArcFace",
+                ),
+            ),
+        ):
+            worker.warm_models()
+
+        self.assertEqual(
+            deepface.build_model.call_args_list,
+            [call("Emotion", task="facial_attribute"), call("ArcFace")],
+        )
+
     def test_anonymous_processing_updates_snapshot_and_deletes_raw_image(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "face.jpg"

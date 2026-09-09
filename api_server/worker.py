@@ -33,7 +33,7 @@ def get_deepface():
 def warm_models() -> None:
     """Download/cache models and keep them warm in this worker process."""
     DeepFace = get_deepface()
-    DeepFace.build_model("Emotion")
+    DeepFace.build_model("Emotion", task="facial_attribute")
     if settings.enable_face_identification:
         DeepFace.build_model(settings.embedding_model)
 

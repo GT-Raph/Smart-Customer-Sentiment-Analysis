@@ -34,7 +34,10 @@ FACE_CASCADE = cv2.CascadeClassifier(CASCADE_PATH)
 
 def validate_config() -> None:
     if not DEVICE_API_KEY:
-        raise RuntimeError("DEVICE_API_KEY is required")
+        raise RuntimeError(
+            "DEVICE_API_KEY is required. Create a device key with Django's "
+            "create_device_key command, add it to .env, then restart this client."
+        )
     if FACE_CASCADE.empty():
         raise RuntimeError("OpenCV face detector could not be loaded")
     LOCAL_QUEUE.mkdir(parents=True, exist_ok=True)
