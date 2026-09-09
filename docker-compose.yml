@@ -2,6 +2,8 @@ services:
   redis:
     image: redis:7-alpine
     command: redis-server --appendonly yes
+    ports:
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -14,7 +16,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dashboard
-    env_file: .env
+    env_file:
+      - path: .env
+        format: raw
     environment:
       DATABASE_ENGINE: mysql
       MYSQL_HOST: host.docker.internal
@@ -34,7 +38,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
-    env_file: .env
+    env_file:
+      - path: .env
+        format: raw
     environment:
       MYSQL_HOST: host.docker.internal
       REDIS_URL: redis://redis:6379/0
@@ -54,7 +60,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    env_file: .env
+    env_file:
+      - path: .env
+        format: raw
     environment:
       MYSQL_HOST: host.docker.internal
       REDIS_URL: redis://redis:6379/0
