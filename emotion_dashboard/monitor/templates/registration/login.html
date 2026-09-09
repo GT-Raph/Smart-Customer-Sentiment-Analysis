@@ -31,7 +31,7 @@
 
             --text-main: #f7f8fc;
             --text-soft: #a0aabd;
-            --text-muted: #6f7a90;
+            --text-muted: #7d8aa3;
 
             --purple: #7c5cff;
             --purple-light: #a18cff;
@@ -766,7 +766,7 @@
             line-height: 1.6;
         }
 
-        .login-footer button {
+        .login-footer a {
             padding: 0;
 
             color: var(--purple-light);
@@ -774,13 +774,10 @@
             font: inherit;
             font-weight: 700;
 
-            cursor: pointer;
-
-            background: transparent;
-            border: 0;
+            text-decoration: none;
         }
 
-        .login-footer button:hover {
+        .login-footer a:hover {
             color: white;
         }
 
@@ -1067,12 +1064,11 @@
                 <div class="login-footer">
                     <p>
                         Having trouble signing in?
-                        <button
-                            type="button"
-                            id="forgotPassword"
+                        <a
+                            href="{% url 'password_reset' %}"
                         >
-                            Contact administrator
-                        </button>
+                            Reset your password
+                        </a>
                     </p>
                 </div>
             </form>
@@ -1384,25 +1380,6 @@
             );
         }
 
-        /*
-         * Administrator contact notice
-         */
-
-        const forgotPassword =
-            document.getElementById(
-                "forgotPassword"
-            );
-
-        if (forgotPassword) {
-            forgotPassword.addEventListener(
-                "click",
-                function () {
-                    alert(
-                        "Please contact your system administrator to reset your password."
-                    );
-                }
-            );
-        }
     </script>
 </body>
 </html>

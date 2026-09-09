@@ -6,6 +6,14 @@ from api_server.face_utils import match_face_id
 
 
 class MatchFaceTests(unittest.TestCase):
+    def test_empty_known_embeddings_returns_none(self):
+        self.assertIsNone(
+            match_face_id(
+                np.array([1.0, 0.0]),
+                [],
+            )
+        )
+
     def test_returns_nearest_match_not_first_match(self):
         known = [
             ("far", np.array([1.0, 0.0, 0.0])),

@@ -41,6 +41,24 @@ urlpatterns = [
     ),
 
     path(
+        "visitors/",
+        views.visitor_list,
+        name="visitors",
+    ),
+
+    path(
+        "visitors/<int:visitor_id>/",
+        views.visitor_detail,
+        name="visitor_detail",
+    ),
+
+    path(
+        "visit-history/",
+        views.visit_history,
+        name="visit_history",
+    ),
+
+    path(
         "reports/",
         views.reports,
         name="reports",

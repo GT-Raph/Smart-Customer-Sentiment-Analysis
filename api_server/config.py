@@ -72,7 +72,11 @@ def database_url_from_environment(
     )
     if not any(values.values()):
         return ""
-    missing = [name for name, value in values.items() if not value]
+    missing = [
+        aliases[name]
+        for name, value in values.items()
+        if not value
+    ]
     if missing:
         raise RuntimeError(
             "Incomplete Supabase database configuration; missing " + ", ".join(missing)
@@ -151,13 +155,30 @@ def _psycopg2_config() -> dict[str, object]:
     }
 
 
-# Compatibility names used by the multi-bank ingestion service.
-DB_CONFIG = _psycopg2_config()
-CAPTURED_FACES_ROOT = Path(
-    os.getenv("CAPTURED_FACES_ROOT", str(PROJECT_ROOT / "captured_faces"))
-).expanduser().resolve()
-CAPTURED_FACES_ROOT.mkdir(parents=True, exist_ok=True)
+def db_config() -> dict[str, object]:
+    """Build psycopg settings only when a connection is requested."""
+    return _psycopg2_config()
+
+
+def captured_faces_root() -> Path:
+    """Resolve private image storage only when an upload needs it."""
+    return Path(
+        os.getenv(
+            "CAPTURED_FACES_ROOT",
+            str(PROJECT_ROOT / "captured_faces"),
+        )
+    ).expanduser().resolve()
+
+
 EMBEDDING_MODEL = settings.embedding_model
 MATCH_THRESHOLD = settings.match_threshold
 MAX_UPLOAD_BYTES = settings.max_upload_bytes
+MAX_EMBEDDING_CANDIDATES = max(
+    1,
+    _as_int("MAX_EMBEDDING_CANDIDATES", 5000),
+)
+FACE_PROCESSING_CAPACITY_WAIT_SECONDS = max(
+    0.1,
+    _as_float("FACE_PROCESSING_CAPACITY_WAIT_SECONDS", 2.0),
+)
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}

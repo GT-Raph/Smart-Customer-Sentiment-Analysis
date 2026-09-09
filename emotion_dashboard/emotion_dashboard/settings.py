@@ -147,6 +147,10 @@ ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
 INSTALLED_APPS = [
+    # monitor is listed before django.contrib.admin so its
+    # registration/password_reset_*.html templates take priority over
+    # the plain ones django.contrib.admin ships under the same names.
+    "monitor.apps.MonitorConfig",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -154,7 +158,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.humanize",
-    "monitor.apps.MonitorConfig",
 ]
 
 MIDDLEWARE = [
@@ -237,6 +240,11 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
-EMAIL_BACKEND = os.getenv(
-    "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
-)
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "").strip()
+if not EMAIL_BACKEND:
+    if DEBUG:
+        EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+    else:
+        raise RuntimeError(
+            "EMAIL_BACKEND must be configured when DJANGO_DEBUG is disabled."
+        )

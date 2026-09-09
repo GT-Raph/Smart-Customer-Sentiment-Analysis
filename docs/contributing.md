@@ -10,6 +10,7 @@
 - Add tests for authentication, tenant boundaries, PC-prefix matching, upload
   validation, and model-output normalization.
 - Before committing, run `python -m compileall`, root unit tests, Django tests,
-  `manage.py makemigrations --check`, and `manage.py check --deploy`.
+  `python emotion_dashboard/manage.py makemigrations --check`, and
+  `python emotion_dashboard/manage.py check --deploy` from the repository root.
 - Document model changes and validate them against consented data representative
   of the intended cameras, lighting, and population.

@@ -195,8 +195,8 @@
                             </td>
 
                             <td>
-                                <span class="emotion-chip emotion-{{ visitor.last_emotion|lower|default:'none' }}">
-                                    {{ visitor.last_emotion|title|default:"Unknown" }}
+                                <span class="emotion-chip emotion-{{ visitor.last_emotion|default:'none'|lower }}">
+                                    {{ visitor.last_emotion|default:"Unknown"|title }}
                                 </span>
                             </td>
 

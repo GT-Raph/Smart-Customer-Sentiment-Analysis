@@ -49,8 +49,12 @@ class Bank(models.Model):
         db_table = "tenant_bank"
         ordering = ("name",)
 
+    def clean(self):
+        super().clean()
+        self.code = (self.code or "").strip().upper()
+
     def save(self, *args, **kwargs):
-        self.code = self.code.strip().upper()
+        self.code = (self.code or "").strip().upper()
 
         super().save(
             *args,
@@ -156,9 +160,14 @@ class Branch(models.Model):
             ),
         ]
 
+    def clean(self):
+        super().clean()
+        self.code = (self.code or "").strip().upper()
+        self.pc_prefix = (self.pc_prefix or "").strip().upper()
+
     def save(self, *args, **kwargs):
-        self.code = self.code.strip().upper()
-        self.pc_prefix = self.pc_prefix.strip().upper()
+        self.code = (self.code or "").strip().upper()
+        self.pc_prefix = (self.pc_prefix or "").strip().upper()
 
         super().save(
             *args,

@@ -7,18 +7,29 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, Q
+from django.core.paginator import Paginator
+from django.db.models import (
+    Count,
+    F,
+    IntegerField,
+    Max,
+    Min,
+    OuterRef,
+    Q,
+    Subquery,
+)
 from django.db.models.functions import TruncDate
 from django.http import (
     FileResponse,
     Http404,
     StreamingHttpResponse,
 )
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
-from .models import UserPreference
+from .models import UserPreference, Visitor
 from .tenant import (
     get_visible_branch_or_404,
     require_bank_admin,
@@ -112,7 +123,7 @@ def logout_view(request):
 
 
 def _date_window(value):
-    end = timezone.now()
+    end = timezone.localtime()
 
     days = {
         "day": 1,
@@ -227,6 +238,7 @@ def _emotion_counts(queryset):
 
     grouped = (
         queryset
+        .order_by()
         .exclude(
             emotion=""
         )
@@ -263,6 +275,18 @@ def _trend_data(
         for emotion in EMOTIONS
     }
 
+    grouped = (
+        queryset
+        .annotate(
+            trend_date=TruncDate("timestamp")
+        )
+        .values("trend_date", "emotion")
+        .annotate(total=Count("id"))
+    )
+    totals = {
+        (row["trend_date"], row["emotion"]): row["total"]
+        for row in grouped
+    }
     current = start.date()
 
     while current <= end.date():
@@ -272,29 +296,10 @@ def _trend_data(
             )
         )
 
-        daily_queryset = (
-            queryset.filter(
-                timestamp__date=current
-            )
-        )
-
-        grouped = {
-            row["emotion"]: row["total"]
-            for row in (
-                daily_queryset
-                .values(
-                    "emotion"
-                )
-                .annotate(
-                    total=Count("id")
-                )
-            )
-        }
-
         for emotion in EMOTIONS:
             values[emotion].append(
-                grouped.get(
-                    emotion,
+                totals.get(
+                    (current, emotion),
                     0,
                 )
             )
@@ -1478,6 +1483,256 @@ def emotion_analytics(request):
             "branch_comparison": (
                 branch_comparison
             ),
+        },
+    )
+
+
+def _visitor_scope_label(user):
+    if user.branch_id:
+        return user.branch.name
+
+    if user.bank_id:
+        return user.bank.name
+
+    if user.is_superuser:
+        return "All banks"
+
+    return "No bank assigned"
+
+
+@login_required
+def visitor_list(request):
+    """List visitors using only snapshots visible to the current tenant user."""
+    scoped_snapshots = visible_snapshots(request.user).filter(status="done")
+    latest_snapshot = (
+        scoped_snapshots
+        .filter(visitor_id=OuterRef("pk"))
+        .order_by("-timestamp", "-id")
+    )
+    visit_totals = (
+        scoped_snapshots
+        .filter(visitor_id=OuterRef("pk"))
+        .order_by()
+        .values("visitor_id")
+        .annotate(total=Count("id"))
+        .values("total")[:1]
+    )
+    visitors = (
+        Visitor.objects
+        .filter(pk__in=scoped_snapshots.values("visitor_id"))
+        .annotate(
+            scoped_last_seen=Subquery(
+                latest_snapshot.values("timestamp")[:1]
+            ),
+            last_emotion=Subquery(
+                latest_snapshot.values("emotion")[:1]
+            ),
+            latest_snapshot_id=Subquery(
+                latest_snapshot.values("id")[:1]
+            ),
+            latest_image_path=Subquery(
+                latest_snapshot.values("image_path")[:1]
+            ),
+            visit_count=Subquery(
+                visit_totals,
+                output_field=IntegerField(),
+            ),
+        )
+        .order_by("-scoped_last_seen", "face_id")
+    )
+
+    search_query = request.GET.get("search", "").strip()
+    if search_query:
+        visitors = visitors.filter(face_id__icontains=search_query)
+
+    page = Paginator(visitors, 25).get_page(request.GET.get("page"))
+    for visitor in page.object_list:
+        visitor.last_seen = visitor.scoped_last_seen
+        visitor.visit_count = visitor.visit_count or 0
+        visitor.initials = (visitor.face_id[:2] or "?").upper()
+        visitor.image_url = (
+            reverse("snapshot_image", args=[visitor.latest_snapshot_id])
+            if visitor.latest_snapshot_id and visitor.latest_image_path
+            else ""
+        )
+
+    return render(
+        request,
+        "monitor/visitors.html",
+        {
+            "visitors": page,
+            "search_query": search_query,
+            "branch_name": _visitor_scope_label(request.user),
+        },
+    )
+
+
+@login_required
+def visitor_detail(request, visitor_id):
+    """Show a visitor profile without exposing out-of-scope snapshots."""
+    scoped_snapshots = (
+        visible_snapshots(request.user)
+        .filter(visitor_id=visitor_id, status="done")
+        .order_by("-timestamp", "-id")
+    )
+    visitor = get_object_or_404(
+        Visitor.objects.filter(
+            pk=visitor_id,
+            pk__in=scoped_snapshots.values("visitor_id"),
+        )
+    )
+    summary = scoped_snapshots.aggregate(
+        first_seen=Min("timestamp"),
+        last_seen=Max("timestamp"),
+    )
+    emotion_counts = _emotion_counts(scoped_snapshots)
+    total_visits = scoped_snapshots.count()
+    detected_emotion_count = sum(
+        1 for count in emotion_counts.values() if count
+    )
+    most_frequent_emotion = (
+        max(emotion_counts.items(), key=lambda item: item[1])[0]
+        if detected_emotion_count
+        else "none"
+    )
+    emotion_percentages = {
+        emotion: (
+            round((count / total_visits) * 100, 1)
+            if total_visits
+            else 0
+        )
+        for emotion, count in emotion_counts.items()
+    }
+    first_seen = summary["first_seen"]
+    last_seen = summary["last_seen"]
+    visit_frequency = None
+    if first_seen and last_seen and total_visits > 1:
+        active_days = max((last_seen.date() - first_seen.date()).days + 1, 1)
+        visit_frequency = f"{round(total_visits / active_days, 1)} visits per day"
+
+    latest_snapshot = scoped_snapshots.first()
+    image_url = (
+        reverse("snapshot_image", args=[latest_snapshot.id])
+        if latest_snapshot and latest_snapshot.image_path
+        else ""
+    )
+
+    return render(
+        request,
+        "monitor/visitor_detail.html",
+        {
+            "visitor": visitor,
+            "image_url": image_url,
+            "first_seen": first_seen,
+            "last_seen": last_seen,
+            "total_visits": total_visits,
+            "detected_emotion_count": detected_emotion_count,
+            "emotion_counts": emotion_counts,
+            "emotion_percentages": emotion_percentages,
+            "most_frequent_emotion": most_frequent_emotion,
+            "positive_percent": emotion_percentages["happy"],
+            "negative_percent": round(
+                emotion_percentages["sad"] + emotion_percentages["angry"],
+                1,
+            ),
+            "visit_frequency": visit_frequency,
+            "average_duration": None,
+            "chart_labels": json.dumps(
+                [emotion.title() for emotion in emotion_counts]
+            ),
+            "chart_values": json.dumps(list(emotion_counts.values())),
+            "chart_colors": json.dumps(
+                [EMOTION_COLORS[emotion] for emotion in emotion_counts]
+            ),
+        },
+    )
+
+
+@login_required
+def visit_history(request):
+    """Show and export tenant-scoped daily visit activity."""
+    snapshots = visible_snapshots(request.user).filter(status="done")
+    face_id = request.GET.get("face_id", "").strip()
+    selected_emotion = request.GET.get("emotion", "").strip().lower()
+    date_from = request.GET.get("date_from", "").strip()
+    date_to = request.GET.get("date_to", "").strip()
+
+    if face_id:
+        snapshots = snapshots.filter(visitor__face_id__icontains=face_id)
+    if selected_emotion in EMOTIONS:
+        snapshots = snapshots.filter(emotion=selected_emotion)
+    else:
+        selected_emotion = ""
+
+    for value, lookup in (
+        (date_from, "timestamp__date__gte"),
+        (date_to, "timestamp__date__lte"),
+    ):
+        if not value:
+            continue
+        try:
+            parsed_date = datetime.strptime(value, "%Y-%m-%d").date()
+        except ValueError:
+            if lookup.endswith("gte"):
+                date_from = ""
+            else:
+                date_to = ""
+            continue
+        snapshots = snapshots.filter(**{lookup: parsed_date})
+
+    grouped_visits = (
+        snapshots
+        .annotate(
+            face_id=F("visitor__face_id"),
+            visit_date=TruncDate("timestamp"),
+        )
+        .values(
+            "visitor_id",
+            "face_id",
+            "visit_date",
+            "branch__name",
+        )
+        .annotate(
+            first_visit=Min("timestamp"),
+            last_visit=Max("timestamp"),
+            visit_count=Count("id"),
+        )
+        .order_by("-visit_date", "-last_visit", "face_id")
+    )
+
+    if request.GET.get("export", "").lower() == "true":
+        writer = csv.writer(CSVBuffer())
+
+        def csv_rows():
+            yield writer.writerow(
+                ["Face ID", "Date", "First visit", "Last visit", "Visits", "Branch"]
+            )
+            for visit in grouped_visits.iterator(chunk_size=1000):
+                yield writer.writerow(
+                    [
+                        visit["face_id"],
+                        visit["visit_date"].isoformat(),
+                        visit["first_visit"].isoformat(),
+                        visit["last_visit"].isoformat(),
+                        visit["visit_count"],
+                        visit["branch__name"],
+                    ]
+                )
+
+        response = StreamingHttpResponse(csv_rows(), content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="visit-history.csv"'
+        return response
+
+    page = Paginator(grouped_visits, 50).get_page(request.GET.get("page"))
+    return render(
+        request,
+        "monitor/visit_history.html",
+        {
+            "visits": page,
+            "face_id": face_id,
+            "selected_emotion": selected_emotion,
+            "date_from": date_from,
+            "date_to": date_to,
         },
     )
 

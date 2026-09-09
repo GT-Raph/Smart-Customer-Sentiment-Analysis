@@ -1,5 +1,8 @@
+import asyncio
 import logging
-import threading
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
+from functools import partial
 from pathlib import Path
 from typing import Annotated
 
@@ -20,9 +23,10 @@ from psycopg2.extras import RealDictCursor
 
 from .config import (
     ALLOWED_IMAGE_TYPES,
-    CAPTURED_FACES_ROOT,
     EMBEDDING_MODEL,
+    FACE_PROCESSING_CAPACITY_WAIT_SECONDS,
     MAX_UPLOAD_BYTES,
+    captured_faces_root,
 )
 from .db_utils import (
     db_healthcheck,
@@ -52,7 +56,11 @@ logger = logging.getLogger(
 )
 
 
-FACE_PROCESSING_LOCK = threading.Lock()
+FACE_PROCESSING_EXECUTOR = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="face-processing",
+)
+FACE_PROCESSING_CAPACITY = asyncio.Semaphore(1)
 
 
 app = FastAPI(
@@ -65,6 +73,10 @@ app = FastAPI(
 )
 
 
+class FaceRuntimeConfigurationError(RuntimeError):
+    """Raised when the local face-analysis runtime is incomplete."""
+
+
 def get_deepface():
     """
     Import DeepFace only when image processing is needed.
@@ -72,15 +84,21 @@ def get_deepface():
     This allows the API health endpoint to start even before
     the machine-learning model has been loaded.
     """
+    if not hasattr(cv2, "CascadeClassifier") or not hasattr(cv2, "data"):
+        raise FaceRuntimeConfigurationError(
+            "OpenCV is incomplete. Stop the API, uninstall all OpenCV variants, "
+            "run 'python -m pip install -r requirements.txt', and restart Uvicorn."
+        )
+
     try:
         from deepface import DeepFace
 
         return DeepFace
 
     except ImportError as error:
-        raise RuntimeError(
+        raise FaceRuntimeConfigurationError(
             "DeepFace is not installed. Run: "
-            "python -m pip install deepface tensorflow"
+            "python -m pip install -r requirements.txt"
         ) from error
 
 
@@ -94,6 +112,7 @@ def authenticate_bank(
         str | None,
         Header(),
     ] = None,
+
 ):
     """
     Authenticate the bank before accepting an image.
@@ -189,6 +208,7 @@ def detect_emotion(
 def process_face_image(
     frame,
     *,
+    database=None,
     job_id,
     bank,
     branch,
@@ -217,7 +237,13 @@ def process_face_image(
             "No face was detected in the uploaded image."
         )
 
-    with get_db() as database:
+    database_context = (
+        nullcontext(database)
+        if database is not None
+        else get_db()
+    )
+
+    with database_context as database:
         try:
             with database.cursor(
                 cursor_factory=RealDictCursor
@@ -420,7 +446,7 @@ def health():
     "/upload-face",
     status_code=status.HTTP_201_CREATED,
 )
-def upload_face(
+async def upload_face(
     file: UploadFile = File(...),
 
     pc_name: str = Form(
@@ -432,6 +458,7 @@ def upload_face(
     bank=Depends(
         authenticate_bank
     ),
+
 ):
     """
     Receive an image and automatically determine its branch
@@ -471,7 +498,7 @@ def upload_face(
             ),
         )
 
-    uploaded_data = file.file.read(
+    uploaded_data = await file.read(
         MAX_UPLOAD_BYTES + 1
     )
 
@@ -498,8 +525,8 @@ def upload_face(
         )
 
     try:
-        with get_db() as database:
-            with database.cursor(
+        with get_db() as branch_database:
+            with branch_database.cursor(
                 cursor_factory=RealDictCursor
             ) as cursor:
                 branch = get_branch_by_pc_name(
@@ -546,19 +573,26 @@ def upload_face(
         / f"{job_id}.jpg"
     )
 
+    storage_root = captured_faces_root()
+
     absolute_image_path = (
-        CAPTURED_FACES_ROOT
+        storage_root
         / relative_image_path
     ).resolve()
 
     if (
-        CAPTURED_FACES_ROOT
+        storage_root
         not in absolute_image_path.parents
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="An invalid image storage path was generated.",
         )
+
+    storage_root.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
     absolute_image_path.parent.mkdir(
         parents=True,
@@ -577,19 +611,35 @@ def upload_face(
         )
 
     try:
-        with FACE_PROCESSING_LOCK:
-            processed_faces = process_face_image(
-                frame,
+        await asyncio.wait_for(
+            FACE_PROCESSING_CAPACITY.acquire(),
+            timeout=FACE_PROCESSING_CAPACITY_WAIT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        absolute_image_path.unlink(
+            missing_ok=True
+        )
 
-                job_id=job_id,
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Face processing is busy. Retry shortly.",
+        )
 
-                bank=bank,
-
-                branch=branch,
-
-                pc_name=normalized_pc_name,
-
-                relative_image_path=relative_image_path,
+    try:
+        with get_db() as processing_database:
+            loop = asyncio.get_running_loop()
+            processed_faces = await loop.run_in_executor(
+                FACE_PROCESSING_EXECUTOR,
+                partial(
+                    process_face_image,
+                    frame,
+                    database=processing_database,
+                    job_id=job_id,
+                    bank=bank,
+                    branch=branch,
+                    pc_name=normalized_pc_name,
+                    relative_image_path=relative_image_path,
+                ),
             )
 
     except ValueError as error:
@@ -599,6 +649,14 @@ def upload_face(
 
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        )
+
+    except FaceRuntimeConfigurationError as error:
+        absolute_image_path.unlink(missing_ok=True)
+        logger.error("Face-analysis runtime is unavailable: %s", error)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(error),
         )
 
@@ -622,6 +680,9 @@ def upload_face(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Face and emotion processing failed.",
         )
+
+    finally:
+        FACE_PROCESSING_CAPACITY.release()
 
     return {
         "status": "processed",

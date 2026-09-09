@@ -1,10 +1,8 @@
 import tempfile
 from pathlib import Path
 
-from django.test import (
-    TestCase,
-    override_settings,
-)
+from django.core.exceptions import ValidationError
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -17,21 +15,15 @@ from .models import (
 )
 
 
-TEST_IMAGE_DIRECTORY = (
-    Path(tempfile.gettempdir())
-    / "sentiment-test-faces"
-)
-
-
-@override_settings(
-    CAPTURED_FACES_ROOT=TEST_IMAGE_DIRECTORY
-)
 class TenantIsolationTests(TestCase):
     def setUp(self):
-        TEST_IMAGE_DIRECTORY.mkdir(
-            parents=True,
-            exist_ok=True,
+        self.image_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.image_directory.cleanup)
+        self.settings_override = override_settings(
+            CAPTURED_FACES_ROOT=Path(self.image_directory.name)
         )
+        self.settings_override.enable()
+        self.addCleanup(self.settings_override.disable)
 
         self.bank_a = Bank.objects.create(
             name="Bank A",
@@ -230,6 +222,36 @@ class TenantIsolationTests(TestCase):
             404,
         )
 
+    def test_bank_a_can_open_bank_a_image(self):
+        image_path = (
+            Path(self.image_directory.name)
+            / self.snapshot_a.image_path
+        )
+        image_path.parent.mkdir(parents=True, exist_ok=True)
+        image_path.write_bytes(b"snapshot-a")
+
+        self.client.login(
+            username="bank-a-admin",
+            password="SafePass12345",
+        )
+
+        response = self.client.get(
+            reverse(
+                "snapshot_image",
+                args=[self.snapshot_a.id],
+            )
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+        self.assertEqual(
+            b"".join(response.streaming_content),
+            b"snapshot-a",
+        )
+        response.close()
+
     def test_branch_user_cannot_open_another_bank_branch(self):
         self.client.login(
             username="bank-a-branch-user",
@@ -290,3 +312,95 @@ class TenantIsolationTests(TestCase):
             ]["emotion"],
             "happy",
         )
+
+    def test_visitor_pages_are_tenant_scoped(self):
+        self.client.login(
+            username="bank-a-admin",
+            password="SafePass12345",
+        )
+
+        visitors_response = self.client.get(
+            reverse("visitors")
+        )
+        history_response = self.client.get(
+            reverse("visit_history")
+        )
+        hidden_detail_response = self.client.get(
+            reverse(
+                "visitor_detail",
+                args=[self.visitor_b.id],
+            )
+        )
+
+        self.assertEqual(visitors_response.status_code, 200)
+        self.assertEqual(len(visitors_response.context["visitors"]), 1)
+        self.assertEqual(history_response.status_code, 200)
+        self.assertEqual(len(history_response.context["visits"]), 1)
+        self.assertEqual(hidden_detail_response.status_code, 404)
+
+    def test_normalization_happens_before_uniqueness_validation(self):
+        duplicate_bank = Bank(
+            name="Duplicate",
+            code="bank_a",
+        )
+
+        with self.assertRaises(ValidationError):
+            duplicate_bank.full_clean()
+
+        self.assertEqual(duplicate_bank.code, "BANK_A")
+
+        duplicate_branch = Branch(
+            bank=self.bank_a,
+            name="Duplicate Main",
+            code="main",
+            pc_prefix="bank-a-pc",
+        )
+
+        with self.assertRaises(ValidationError):
+            duplicate_branch.full_clean()
+
+        self.assertEqual(duplicate_branch.code, "MAIN")
+        self.assertEqual(duplicate_branch.pc_prefix, "BANK-A-PC")
+
+    def test_visitor_detail_counts_scoped_visits(self):
+        CapturedSnapshot.objects.create(
+            job_id="job-bank-a-second",
+            bank=self.bank_a,
+            branch=self.branch_a,
+            visitor=self.visitor_a,
+            pc_name="BANK-A-PC-01",
+            image_path="BANK_A/MAIN/bank-a-second.jpg",
+            timestamp=timezone.now(),
+            emotion="happy",
+            confidence=93.0,
+            status="done",
+            processed=True,
+        )
+        self.assertEqual(
+            CapturedSnapshot.objects.filter(
+                visitor=self.visitor_a,
+                status="done",
+                emotion="happy",
+            ).count(),
+            2,
+        )
+
+        self.client.login(
+            username="bank-a-admin",
+            password="SafePass12345",
+        )
+        response = self.client.get(
+            reverse("visitor_detail", args=[self.visitor_a.id])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        rendered_context = response.context[-1]
+        self.assertEqual(rendered_context["emotion_counts"]["happy"], 2)
+        self.assertEqual(rendered_context["total_visits"], 2)
+
+    def test_password_reset_page_is_available(self):
+        response = self.client.get(
+            reverse("password_reset")
+        )
+
+        self.assertEqual(response.status_code, 200)

@@ -48,7 +48,7 @@
 
             --text-main: #f7f8fc;
             --text-soft: #a0aabd;
-            --text-muted: #6f7a90;
+            --text-muted: #7d8aa3;
 
             --purple: #7c5cff;
             --purple-light: #a18cff;
@@ -1450,6 +1450,32 @@
                     Reports
                 </a>
             </li>
+
+            {% url 'visitors' as visitors_url %}
+            {% if visitors_url %}
+                <li>
+                    <a
+                        href="{{ visitors_url }}"
+                        class="{% if request.resolver_match.url_name == 'visitors' or request.resolver_match.url_name == 'visitor_detail' %}active{% endif %}"
+                    >
+                        <i class="bi bi-people"></i>
+                        Visitors
+                    </a>
+                </li>
+            {% endif %}
+
+            {% url 'visit_history' as visit_history_url %}
+            {% if visit_history_url %}
+                <li>
+                    <a
+                        href="{{ visit_history_url }}"
+                        class="{% if request.resolver_match.url_name == 'visit_history' %}active{% endif %}"
+                    >
+                        <i class="bi bi-clock-history"></i>
+                        Visit History
+                    </a>
+                </li>
+            {% endif %}
 
             <li>
                 <a

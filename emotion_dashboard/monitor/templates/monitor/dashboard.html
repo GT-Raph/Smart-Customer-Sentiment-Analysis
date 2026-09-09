@@ -526,6 +526,26 @@
             const Charts =
                 window.SentimentCharts;
 
+            if (!window.Chart || !Charts) {
+                [
+                    ["emotionDistributionChart", "emotionDistributionEmpty"],
+                    ["emotionTrendChart", "emotionTrendEmpty"],
+                    ["hourlyEmotionChart", "hourlyEmotionEmpty"]
+                ].forEach(function (elements) {
+                    const canvas = document.getElementById(elements[0]);
+                    const emptyState = document.getElementById(elements[1]);
+
+                    if (canvas) {
+                        canvas.style.display = "none";
+                    }
+
+                    if (emptyState) {
+                        emptyState.classList.add("show");
+                    }
+                });
+                return;
+            }
+
             const emotionLabels =
                 {{ emotion_labels|default:"[]"|safe }};
 

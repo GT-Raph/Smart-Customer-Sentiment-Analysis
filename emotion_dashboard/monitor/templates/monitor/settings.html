@@ -1205,8 +1205,12 @@
                             </td>
 
                             <td>
-                                {{ computer.last_seen|timesince }}
-                                ago
+                                {% if computer.last_seen %}
+                                    {{ computer.last_seen|timesince }}
+                                    ago
+                                {% else %}
+                                    Outside online window
+                                {% endif %}
                             </td>
 
                             <td>

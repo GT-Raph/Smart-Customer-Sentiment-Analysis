@@ -89,27 +89,55 @@ def _computer_rows(
     user,
     bank_settings_map,
 ):
-    rows = (
-        visible_snapshots(user)
+    group_fields = (
+        "bank_id",
+        "bank__name",
+        "branch_id",
+        "branch__name",
+        "branch__pc_prefix",
+        "pc_name",
+    )
+    snapshots = visible_snapshots(user)
+    lifetime_rows = list(
+        snapshots
         .values(
-            "bank_id",
-            "bank__name",
-            "branch_id",
-            "branch__name",
-            "branch__pc_prefix",
-            "pc_name",
+            *group_fields,
         )
         .annotate(
-            last_seen=Max("timestamp"),
             total_captures=Count("id"),
+            lifetime_last_seen=Max("timestamp"),
         )
-        .order_by("-last_seen")
     )
-
     current_time = timezone.now()
+    maximum_offline_minutes = max(
+        [
+            15,
+            *(
+                item.offline_after_minutes
+                for item in bank_settings_map.values()
+            ),
+        ]
+    )
+    recent_rows = (
+        snapshots
+        .filter(
+            timestamp__gte=(
+                current_time
+                - timedelta(minutes=maximum_offline_minutes)
+            )
+        )
+        .values(*group_fields)
+        .annotate(recent_last_seen=Max("timestamp"))
+    )
+    recent_by_computer = {
+        tuple(row[field] for field in group_fields): row["recent_last_seen"]
+        for row in recent_rows
+    }
     computer_rows = []
 
-    for row in rows:
+    for row in lifetime_rows:
+        computer_key = tuple(row[field] for field in group_fields)
+        recent_last_seen = recent_by_computer.get(computer_key)
         settings_object = (
             bank_settings_map.get(
                 row["bank_id"]
@@ -131,13 +159,15 @@ def _computer_rows(
         )
 
         is_online = bool(
-            row["last_seen"]
-            and row["last_seen"] >= cutoff
+            recent_last_seen
+            and recent_last_seen >= cutoff
         )
 
         computer_rows.append(
             {
                 **row,
+
+                "last_seen": row["lifetime_last_seen"],
 
                 "is_online": is_online,
 
@@ -152,6 +182,14 @@ def _computer_rows(
                 ),
             }
         )
+
+    computer_rows.sort(
+        key=lambda row: (
+            row["last_seen"] is not None,
+            row["last_seen"] or current_time,
+        ),
+        reverse=True,
+    )
 
     return computer_rows
 

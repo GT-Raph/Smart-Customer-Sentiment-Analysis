@@ -1,4 +1,5 @@
 {% extends "monitor/base.html" %}
+{% load custom_filters %}
 
 {% block title %}
     Visit History
@@ -167,15 +168,22 @@
                             </li>
                         {% endif %}
 
-                        {% for i in visits.paginator.page_range %}
-                            <li class="page-item {% if visits.number == i %}active{% endif %}">
-                                <a
-                                    class="page-link"
-                                    href="?page={{ i }}{% if selected_emotion %}&emotion={{ selected_emotion|urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from|urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to|urlencode }}{% endif %}{% if face_id %}&face_id={{ face_id|urlencode }}{% endif %}"
-                                >
-                                    {{ i }}
-                                </a>
-                            </li>
+                        {% for i in visits|elided_page_range %}
+                            {% if i == visits.paginator.ELLIPSIS %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">{{ i }}</span>
+                                </li>
+                            {% else %}
+                                <li class="page-item {% if visits.number == i %}active{% endif %}">
+                                    <a
+                                        class="page-link"
+                                        href="?page={{ i }}{% if selected_emotion %}&emotion={{ selected_emotion|urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from|urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to|urlencode }}{% endif %}{% if face_id %}&face_id={{ face_id|urlencode }}{% endif %}"
+                                        {% if visits.number == i %}aria-current="page"{% endif %}
+                                    >
+                                        {{ i }}
+                                    </a>
+                                </li>
+                            {% endif %}
                         {% endfor %}
 
                         {% if visits.has_next %}

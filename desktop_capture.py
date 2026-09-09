@@ -104,6 +104,14 @@ CAMERA_FPS = env_int(
     30,
 )
 
+MAX_CONSECUTIVE_READ_FAILURES = max(
+    1,
+    env_int(
+        "MAX_CONSECUTIVE_READ_FAILURES",
+        30,
+    ),
+)
+
 REQUEST_TIMEOUT_SECONDS = env_int(
     "REQUEST_TIMEOUT_SECONDS",
     90,
@@ -185,14 +193,20 @@ MAX_BRIGHTNESS = env_float(
     215.0,
 )
 
-MAX_DARK_PIXEL_PERCENT = env_float(
-    "MAX_DARK_PIXEL_PERCENT",
-    0.58,
+MAX_DARK_PIXEL_FRACTION = env_float(
+    "MAX_DARK_PIXEL_FRACTION",
+    env_float(
+        "MAX_DARK_PIXEL_PERCENT",
+        0.58,
+    ),
 )
 
-MAX_BRIGHT_PIXEL_PERCENT = env_float(
-    "MAX_BRIGHT_PIXEL_PERCENT",
-    0.38,
+MAX_BRIGHT_PIXEL_FRACTION = env_float(
+    "MAX_BRIGHT_PIXEL_FRACTION",
+    env_float(
+        "MAX_BRIGHT_PIXEL_PERCENT",
+        0.38,
+    ),
 )
 
 
@@ -267,6 +281,14 @@ MAX_OFFLINE_QUEUE_FILES = max(
     ),
 )
 
+REJECTED_CAPTURE_RETENTION_SECONDS = max(
+    0,
+    env_int(
+        "REJECTED_CAPTURE_RETENTION_SECONDS",
+        86400,
+    ),
+)
+
 OFFLINE_QUEUE_LOCK = threading.Lock()
 QUEUE_RETRY_LOCK = threading.Lock()
 
@@ -280,6 +302,10 @@ Box = tuple[
 ]
 
 
+class CameraReadError(RuntimeError):
+    """Raised when a camera repeatedly fails to return frames."""
+
+
 FACE_CASCADE = cv2.CascadeClassifier(
     cv2.data.haarcascades
     + "haarcascade_frontalface_default.xml"
@@ -289,12 +315,6 @@ EYE_CASCADE = cv2.CascadeClassifier(
     cv2.data.haarcascades
     + "haarcascade_eye_tree_eyeglasses.xml"
 )
-
-if FACE_CASCADE.empty():
-    raise RuntimeError(
-        "OpenCV could not load the frontal-face detector."
-    )
-
 
 @dataclass
 class Quality:
@@ -341,6 +361,21 @@ def validate_settings() -> None:
         raise RuntimeError(
             "Missing .env value(s): "
             + ", ".join(missing)
+        )
+
+    if FACE_CASCADE.empty():
+        raise RuntimeError(
+            "OpenCV could not load the frontal-face detector."
+        )
+
+    if not 0 <= MAX_DARK_PIXEL_FRACTION <= 1:
+        raise RuntimeError(
+            "MAX_DARK_PIXEL_FRACTION must be between 0 and 1."
+        )
+
+    if not 0 <= MAX_BRIGHT_PIXEL_FRACTION <= 1:
+        raise RuntimeError(
+            "MAX_BRIGHT_PIXEL_FRACTION must be between 0 and 1."
         )
 
     if not (
@@ -773,7 +808,7 @@ def inspect_quality(
 
     elif (
         dark_percent
-        > MAX_DARK_PIXEL_PERCENT
+        > MAX_DARK_PIXEL_FRACTION
     ):
         reason = (
             "Too many dark facial pixels"
@@ -781,7 +816,7 @@ def inspect_quality(
 
     elif (
         bright_percent
-        > MAX_BRIGHT_PIXEL_PERCENT
+        > MAX_BRIGHT_PIXEL_FRACTION
     ):
         reason = (
             "Too much glare or overexposure"
@@ -936,6 +971,13 @@ def send_to_api(
         response
     )
 
+    if response.status_code in {408, 429}:
+        return (
+            "retry",
+            f"HTTP {response.status_code}: {detail}",
+            None,
+        )
+
     if (
         200
         <= response.status_code
@@ -1032,6 +1074,22 @@ def _trim_queue_unlocked() -> None:
         path.with_suffix(
             ".json"
         ).unlink(
+            missing_ok=True
+        )
+
+    rejection_cutoff = (
+        time.time()
+        - REJECTED_CAPTURE_RETENTION_SECONDS
+    )
+
+    for path in OFFLINE_QUEUE_DIR.glob(
+        "*.rejected"
+    ):
+        if path.stat().st_mtime >= rejection_cutoff:
+            continue
+
+        path.unlink(missing_ok=True)
+        path.with_suffix(".json").unlink(
             missing_ok=True
         )
 
@@ -1307,10 +1365,46 @@ def retry_offline_queue() -> None:
                 )
 
             elif result_status == "reject":
+                rejected_path = image_path.with_suffix(
+                    ".rejected"
+                )
+
+                with OFFLINE_QUEUE_LOCK:
+                    metadata_path = image_path.with_suffix(
+                        ".json"
+                    )
+
+                    try:
+                        metadata = json.loads(
+                            metadata_path.read_text(
+                                encoding="utf-8"
+                            )
+                        )
+                    except (
+                        OSError,
+                        ValueError,
+                    ):
+                        metadata = {}
+
+                    metadata.update(
+                        {
+                            "rejected_at": datetime.now(
+                                timezone.utc
+                            ).isoformat(),
+                            "rejection_detail": detail,
+                        }
+                    )
+                    metadata_path.write_text(
+                        json.dumps(metadata, indent=2),
+                        encoding="utf-8",
+                    )
+                    image_path.replace(rejected_path)
+                    rejected_path.touch()
+
                 print(
-                    "Queued image rejected and left "
-                    "for review: "
-                    f"{image_path.name} - {detail}"
+                    "Queued image rejected and moved "
+                    "out of the retry set: "
+                    f"{rejected_path.name} - {detail}"
                 )
 
             else:
@@ -1563,6 +1657,7 @@ def capture_loop(
     camera: cv2.VideoCapture,
 ) -> None:
     frame_number = 0
+    consecutive_read_failures = 0
     last_box: Optional[Box] = None
     stable_count = 0
     stable_started_at: Optional[float] = None
@@ -1590,11 +1685,23 @@ def capture_loop(
             ok, frame = camera.read()
 
             if not ok or frame is None:
+                consecutive_read_failures += 1
+
+                if (
+                    consecutive_read_failures
+                    >= MAX_CONSECUTIVE_READ_FAILURES
+                ):
+                    raise CameraReadError(
+                        "Camera stopped returning frames."
+                    )
+
                 time.sleep(
                     0.1
                 )
 
                 continue
+
+            consecutive_read_failures = 0
 
             now = time.monotonic()
             frame_number += 1
@@ -1826,6 +1933,9 @@ def capture_loop(
                     0.01
                 )
 
+        except CameraReadError:
+            raise
+
         except Exception:
             print(
                 "Unexpected capture-loop failure; "
@@ -1841,12 +1951,7 @@ def capture_loop(
 
 def run() -> None:
     validate_settings()
-
-    with OFFLINE_QUEUE_LOCK:
-        OFFLINE_QUEUE_DIR.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
+    trim_queue()
 
     while True:
         camera: Optional[

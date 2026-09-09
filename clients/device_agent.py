@@ -22,7 +22,7 @@ load_dotenv()
 API_URL = os.getenv("INGESTION_API_URL") or os.getenv(
     "FACE_API_URL", "http://127.0.0.1:8001/upload-face"
 )
-BANK_API_KEY = os.getenv("BANK_API_KEY", "")
+BANK_API_KEY = os.getenv("BANK_API_KEY", "").strip()
 BANK_CODE = os.getenv("BANK_CODE", "").strip().upper()
 CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "0"))
 MIN_SECONDS_BETWEEN_UPLOADS = float(
@@ -34,8 +34,20 @@ LOCAL_QUEUE = Path(os.getenv("LOCAL_CAPTURE_QUEUE", "queued_captures")).resolve(
 MAX_QUEUED_IMAGES = int(os.getenv("MAX_QUEUED_IMAGES", "100"))
 SESSION_RESET_SECONDS = float(os.getenv("SESSION_RESET_SECONDS", "30"))
 
-CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-FACE_CASCADE = cv2.CascadeClassifier(CASCADE_PATH)
+OPENCV_FACE_DETECTOR_AVAILABLE = (
+    hasattr(cv2, "data")
+    and hasattr(cv2, "CascadeClassifier")
+)
+CASCADE_PATH = (
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    if OPENCV_FACE_DETECTOR_AVAILABLE
+    else ""
+)
+FACE_CASCADE = (
+    cv2.CascadeClassifier(CASCADE_PATH)
+    if OPENCV_FACE_DETECTOR_AVAILABLE
+    else None
+)
 
 
 def validate_config() -> None:
@@ -43,24 +55,37 @@ def validate_config() -> None:
         raise RuntimeError("BANK_CODE is required")
     if not BANK_API_KEY:
         raise RuntimeError("BANK_API_KEY is required")
-    if FACE_CASCADE.empty():
-        raise RuntimeError("OpenCV face detector could not be loaded")
+    if FACE_CASCADE is None or FACE_CASCADE.empty():
+        raise RuntimeError(
+            "OpenCV face detection is unavailable. Stop running Python "
+            "processes and reinstall the project requirements."
+        )
     LOCAL_QUEUE.mkdir(parents=True, exist_ok=True)
 
 
-def upload_image(jpeg_bytes: bytes, session_id: str) -> bool:
-    response = requests.post(
-        API_URL,
-        headers={"X-Bank-Code": BANK_CODE, "X-API-Key": BANK_API_KEY},
-        files={"file": ("face.jpg", jpeg_bytes, "image/jpeg")},
-        data={"pc_name": socket.gethostname().strip().upper()},
-        timeout=REQUEST_TIMEOUT,
-    )
+def upload_image(jpeg_bytes: bytes, session_id: str) -> str:
+    try:
+        response = requests.post(
+            API_URL,
+            headers={"X-Bank-Code": BANK_CODE, "X-API-Key": BANK_API_KEY},
+            files={"file": ("face.jpg", jpeg_bytes, "image/jpeg")},
+            data={"pc_name": socket.gethostname().strip().upper()},
+            timeout=REQUEST_TIMEOUT,
+        )
+    except requests.Timeout:
+        return "retry"
     if 200 <= response.status_code < 300:
-        return True
-    if response.status_code in {401, 403}:
+        return "success"
+    if response.status_code == 401:
         raise RuntimeError("The bank API credentials were rejected")
-    return False
+    if response.status_code in {408, 429} or response.status_code >= 500:
+        return "retry"
+
+    print(
+        "Capture permanently rejected by the API "
+        f"(HTTP {response.status_code}); skipping it."
+    )
+    return "reject"
 
 
 def queue_locally(jpeg_bytes: bytes, session_id: str) -> None:
@@ -75,7 +100,8 @@ def flush_queue() -> None:
     for path in sorted(LOCAL_QUEUE.glob("*.jpg"), key=lambda p: p.stat().st_mtime):
         try:
             session_id = path.name.split("__", 1)[0]
-            if upload_image(path.read_bytes(), session_id):
+            result = upload_image(path.read_bytes(), session_id)
+            if result in {"success", "reject"}:
                 path.unlink(missing_ok=True)
             else:
                 break
@@ -139,7 +165,8 @@ def run() -> None:
             payload = jpeg.tobytes()
             try:
                 flush_queue()
-                if not upload_image(payload, current_session_id):
+                result = upload_image(payload, current_session_id)
+                if result == "retry":
                     queue_locally(payload, current_session_id)
             except requests.RequestException:
                 queue_locally(payload, current_session_id)

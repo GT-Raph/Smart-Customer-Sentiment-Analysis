@@ -8,7 +8,7 @@ import numpy as np
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-from .config import DB_CONFIG
+from .config import MAX_EMBEDDING_CANDIDATES, db_config
 
 
 @contextmanager
@@ -16,9 +16,10 @@ def get_db():
     """
     Yield a PostgreSQL connection and always close it on exit.
     """
+    connection_settings = db_config()
     missing_settings = [
         key
-        for key, value in DB_CONFIG.items()
+        for key, value in connection_settings.items()
         if key != "sslmode" and not value
     ]
 
@@ -29,7 +30,7 @@ def get_db():
         )
 
     database = psycopg2.connect(
-        **DB_CONFIG
+        **connection_settings
     )
 
     try:
@@ -207,27 +208,50 @@ def get_embeddings_db(
     """
     cursor.execute(
         """
-        SELECT DISTINCT ON (visitor.face_id)
-            visitor.face_id,
-            snapshot.embedding
-        FROM analytics_snapshot AS snapshot
+        SELECT
+            candidate.face_id,
+            candidate.embedding
+        FROM (
+            SELECT DISTINCT ON (visitor.face_id)
+                visitor.face_id,
+                visitor.last_seen,
+                snapshot.embedding,
+                snapshot.timestamp,
+                snapshot.id
+            FROM analytics_snapshot AS snapshot
 
-        INNER JOIN analytics_visitor AS visitor
-            ON visitor.id = snapshot.visitor_id
+            INNER JOIN analytics_visitor AS visitor
+                ON visitor.id = snapshot.visitor_id
 
-        WHERE snapshot.bank_id = %s
-          AND visitor.bank_id = %s
-          AND snapshot.embedding IS NOT NULL
-          AND snapshot.status = 'done'
+            LEFT JOIN tenant_bank_settings AS bank_settings
+                ON bank_settings.bank_id = snapshot.bank_id
 
+            WHERE snapshot.bank_id = %s
+              AND visitor.bank_id = %s
+              AND snapshot.embedding IS NOT NULL
+              AND snapshot.status = 'done'
+              AND snapshot.timestamp >= (
+                  CURRENT_TIMESTAMP
+                  - COALESCE(
+                      bank_settings.record_retention_days,
+                      365
+                  ) * INTERVAL '1 day'
+              )
+
+            ORDER BY
+                visitor.face_id,
+                snapshot.timestamp DESC,
+                snapshot.id DESC
+        ) AS candidate
         ORDER BY
-            visitor.face_id,
-            snapshot.timestamp DESC,
-            snapshot.id DESC
+            candidate.last_seen DESC,
+            candidate.face_id
+        LIMIT %s
         """,
         (
             bank_id,
             bank_id,
+            MAX_EMBEDDING_CANDIDATES,
         ),
     )
 

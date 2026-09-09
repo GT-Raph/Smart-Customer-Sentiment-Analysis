@@ -49,8 +49,37 @@ python -m pip install -r requirements.txt
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-Fill `.env` with the Django, Supabase, face-analysis, and bank-client values
+Fill the server `.env` with the Django, Supabase, and face-analysis values
 before continuing. The copy command preserves an existing `.env` file.
+
+Keep teller credentials separate from the server database configuration:
+
+```dotenv
+# Teller PC .env -- do not copy Supabase or Django secrets to teller PCs
+FACE_API_URL=http://127.0.0.1:8001/upload-face
+BANK_CODE=YOUR_BANK_CODE
+BANK_API_KEY=replace-with-the-bank-upload-key
+CAPTURE_INTERVAL_SECONDS=5
+MAX_CONSECUTIVE_READ_FAILURES=30
+MAX_DARK_PIXEL_FRACTION=0.58
+MAX_BRIGHT_PIXEL_FRACTION=0.38
+REJECTED_CAPTURE_RETENTION_SECONDS=86400
+```
+
+The Django and FastAPI server use a server-only `.env` containing settings
+such as these:
+
+```dotenv
+DJANGO_SECRET_KEY=replace-with-a-long-random-value
+DJANGO_DEBUG=False
+DB_ENGINE=postgresql
+DB_NAME=postgres
+DB_USER=postgres.PROJECT_REF
+DB_PASSWORD=replace-with-your-database-password
+DB_HOST=aws-0-REGION.pooler.supabase.com
+DB_PORT=5432
+DB_SSLMODE=require
+```
 
 Open three PowerShell terminals in the repository root and activate `.venv` in
 each terminal.
@@ -102,12 +131,16 @@ Run only one camera client at a time. Its Windows computer name must match an
 active branch PC prefix configured in the Django admin.
 
 If an older environment reports that `cv2` has no `CascadeClassifier`, remove
-the conflicting OpenCV variants and reinstall the pinned version:
+the conflicting OpenCV variants and reinstall the pinned version. Stop Django,
+FastAPI, and both camera clients with `Ctrl+C` before running these commands:
 
 ```powershell
 python -m pip uninstall -y opencv-python opencv-python-headless
 python -m pip install -r requirements.txt
 ```
+
+Then start FastAPI and the selected camera client again. Already-running Python
+processes keep the previously imported, broken `cv2` module until restarted.
 
 ### Optional: Docker
 
