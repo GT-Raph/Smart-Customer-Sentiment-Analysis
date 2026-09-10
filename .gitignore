@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 .venv/
+.venv-*/
 venv/
 __pycache__/
 *.py[cod]
@@ -13,6 +14,7 @@ htmlcov/
 *.sqlite3
 private_uploads/
 queued_captures/
+offline_queue/
 captured_faces/
 media/
 staticfiles/
