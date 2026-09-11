@@ -4,7 +4,7 @@ opencv-python==4.11.0.86
 numpy==2.2.6
 Pillow>=10,<13
 ulid-py==1.1.0
-psycopg2-binary==2.9.11
+psycopg2-binary==2.9.12
 python-dotenv>=1.0,<2
 python-multipart>=0.0.20,<1
 scipy==1.15.3
