@@ -29,6 +29,7 @@ def worker_settings(**overrides):
         "delete_raw_image_after_processing": True,
         "emotion_detector_backend": "retinaface",
         "emotion_expand_percentage": 10,
+        "emotion_mirror_ensemble": False,
         "emotion_smoothing_frames": 3,
         "emotion_smoothing_window_seconds": 4.0,
         "emotion_min_samples": 1,
@@ -44,6 +45,28 @@ def worker_settings(**overrides):
 
 
 class WorkerTests(unittest.TestCase):
+    def test_duplicate_processed_job_returns_stored_result_without_inference(self):
+        snapshot = {
+            "id": 10,
+            "status": "processed",
+            "processed": True,
+            "emotion": "happy",
+            "image_path": None,
+        }
+
+        with (
+            patch.object(worker, "get_snapshot", return_value=snapshot),
+            patch.object(worker, "mark_processing") as mark_processing,
+            patch.object(worker, "get_deepface") as get_deepface,
+        ):
+            result = worker.process_snapshot(10)
+
+        self.assertEqual(result["status"], "processed")
+        self.assertEqual(result["emotion"], "happy")
+        self.assertTrue(result["already_complete"])
+        mark_processing.assert_not_called()
+        get_deepface.assert_not_called()
+
     def test_warm_models_loads_emotion_as_a_facial_attribute(self):
         deepface = Mock()
 
@@ -85,6 +108,59 @@ class WorkerTests(unittest.TestCase):
 
         self.assertEqual(emotion, "happy")
         self.assertAlmostEqual(confidence, 0.5833333333)
+
+    def test_robust_consensus_limits_one_confident_sad_outlier(self):
+        vectors = [
+            {"happy": 0.80, "sad": 0.20},
+            {"happy": 0.75, "sad": 0.25},
+            {"happy": 0.05, "sad": 0.95},
+        ]
+
+        combined = worker._robust_temporal_consensus(vectors)
+
+        self.assertAlmostEqual(combined["happy"], 0.75)
+        self.assertAlmostEqual(combined["sad"], 0.25)
+
+    def test_primary_analysis_uses_largest_detected_face(self):
+        result = worker._select_primary_analysis(
+            [
+                {
+                    "region": {"x": 0, "y": 0, "w": 30, "h": 30},
+                    "emotion": {"sad": 90.0, "happy": 10.0},
+                },
+                {
+                    "region": {"x": 5, "y": 5, "w": 90, "h": 90},
+                    "emotion": {"happy": 85.0, "sad": 15.0},
+                },
+            ]
+        )
+
+        self.assertEqual(result["emotion"]["happy"], 85.0)
+
+    def test_mirrored_prediction_is_ensembled_with_original(self):
+        frame = np.full((100, 100, 3), 127, dtype=np.uint8)
+        deepface = Mock()
+        deepface.analyze.side_effect = [
+            {
+                "region": {"x": 0, "y": 0, "w": 100, "h": 100},
+                "emotion": {"happy": 90.0, "sad": 10.0},
+            },
+            {
+                "region": {"x": 0, "y": 0, "w": 100, "h": 100},
+                "emotion": {"happy": 70.0, "sad": 30.0},
+            },
+        ]
+
+        with patch.object(
+            worker,
+            "settings",
+            worker_settings(emotion_mirror_ensemble=True),
+        ):
+            vector = worker._analyse_emotion_frame(deepface, frame)
+
+        self.assertEqual(deepface.analyze.call_count, 2)
+        self.assertAlmostEqual(vector["happy"], 0.80)
+        self.assertAlmostEqual(vector["sad"], 0.20)
 
     def test_close_probabilities_are_reported_as_uncertain(self):
         with patch.object(

@@ -1,5 +1,6 @@
 import hashlib
 import io
+import json
 from types import SimpleNamespace
 
 from django.core.exceptions import PermissionDenied
@@ -164,6 +165,29 @@ class DashboardUiSmokeTests(TestCase):
         response = self.client.get(f"/branch/{self.branch.pk}/")
 
         self.assertContains(response, "95.0%")
+
+    def test_dashboard_includes_all_deepface_expression_categories(self):
+        for index, emotion in enumerate(("fear", "disgust"), start=1):
+            CapturedSnapshot.objects.create(
+                job_id=f"01UICATEGORY{index:014d}",
+                branch=self.branch,
+                device=self.device,
+                visitor=self.visitor,
+                pc_name=self.device.pc_name,
+                timestamp=timezone.now(),
+                status=CapturedSnapshot.Status.PROCESSED,
+                processed=True,
+                emotion=emotion,
+                confidence=0.80,
+            )
+
+        self.client.force_login(self.admin)
+        response = self.client.get("/dashboard/")
+
+        self.assertEqual(response.context["negative_percentage"], 66.7)
+        labels = json.loads(response.context["emotion_labels"])
+        self.assertIn("fear", labels)
+        self.assertIn("disgust", labels)
 
     def test_logout_is_post_only(self):
         self.client.force_login(self.admin)

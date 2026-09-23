@@ -243,6 +243,10 @@
                     <i class="bi bi-emoji-angry"></i>
                 {% elif top_emotion.emotion == "surprise" %}
                     <i class="bi bi-emoji-surprise"></i>
+                {% elif top_emotion.emotion == "fear" %}
+                    <i class="bi bi-emoji-dizzy"></i>
+                {% elif top_emotion.emotion == "disgust" %}
+                    <i class="bi bi-emoji-grimace"></i>
                 {% elif top_emotion.emotion == "neutral" %}
                     <i class="bi bi-emoji-neutral"></i>
                 {% else %}
@@ -551,6 +555,12 @@
             const hourlySurprise =
                 {{ hourly_surprise|default:"[]"|safe }};
 
+            const hourlyFear =
+                {{ hourly_fear|default:"[]"|safe }};
+
+            const hourlyDisgust =
+                {{ hourly_disgust|default:"[]"|safe }};
+
             /*
              * Emotion distribution
              */
@@ -730,6 +740,18 @@
                     data: hourlySurprise,
                     backgroundColor:
                         Charts.colors.surprise
+                },
+                {
+                    label: "Fear",
+                    data: hourlyFear,
+                    backgroundColor:
+                        Charts.colors.fear
+                },
+                {
+                    label: "Disgust",
+                    data: hourlyDisgust,
+                    backgroundColor:
+                        Charts.colors.disgust
                 }
             ];
 

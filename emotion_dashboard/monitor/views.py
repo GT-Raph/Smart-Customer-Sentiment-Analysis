@@ -35,7 +35,11 @@ EMOTIONS = (
     "sad",
     "angry",
     "surprise",
+    "fear",
+    "disgust",
 )
+
+NEGATIVE_EMOTIONS = ("sad", "angry", "fear", "disgust")
 
 EMOTION_COLORS = {
     "happy": "#FFD166",
@@ -43,6 +47,8 @@ EMOTION_COLORS = {
     "sad": "#118AB2",
     "angry": "#EF476F",
     "surprise": "#8338EC",
+    "fear": "#F78C6B",
+    "disgust": "#06D6A0",
     "none": "#6C757D",
 }
 
@@ -421,10 +427,7 @@ def _growth(
 
     if negative:
         queryset = queryset.filter(
-            emotion__in=(
-                "sad",
-                "angry",
-            )
+            emotion__in=NEGATIVE_EMOTIONS
         )
 
         today_count = (
@@ -588,9 +591,9 @@ def dashboard(request):
         key=lambda item: item[1],
     )
 
-    negative_count = (
-        today_counts["sad"]
-        + today_counts["angry"]
+    negative_count = sum(
+        today_counts[emotion]
+        for emotion in NEGATIVE_EMOTIONS
     )
 
     hourly_totals = [
@@ -825,6 +828,22 @@ def dashboard(request):
             )
         ),
 
+        "hourly_fear": (
+            json.dumps(
+                hourly[
+                    "fear"
+                ]
+            )
+        ),
+
+        "hourly_disgust": (
+            json.dumps(
+                hourly[
+                    "disgust"
+                ]
+            )
+        ),
+
         "branches": (
             visible_branches(
                 request.user
@@ -937,10 +956,7 @@ def branch_overview(request):
             negative=Count(
                 "id",
                 filter=Q(
-                    emotion__in=(
-                        "sad",
-                        "angry",
-                    )
+                    emotion__in=NEGATIVE_EMOTIONS
                 ),
             ),
         )
@@ -1400,13 +1416,9 @@ def emotion_analytics(request):
                 "negative": (
                     round(
                         (
-                            (
-                                branch_counts[
-                                    "sad"
-                                ]
-                                + branch_counts[
-                                    "angry"
-                                ]
+                            sum(
+                                branch_counts[emotion]
+                                for emotion in NEGATIVE_EMOTIONS
                             )
                             / total
                         )

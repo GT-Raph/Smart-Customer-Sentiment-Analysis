@@ -86,6 +86,7 @@ class Settings:
         "EMOTION_DETECTOR_BACKEND", "retinaface"
     ).strip().lower()
     emotion_expand_percentage: int = _as_int("EMOTION_EXPAND_PERCENTAGE", 10)
+    emotion_mirror_ensemble: bool = _as_bool("EMOTION_MIRROR_ENSEMBLE", True)
     emotion_smoothing_frames: int = _as_int("EMOTION_SMOOTHING_FRAMES", 3)
     emotion_smoothing_window_seconds: float = _as_float(
         "EMOTION_SMOOTHING_WINDOW_SECONDS", 4.0

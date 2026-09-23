@@ -291,6 +291,20 @@
                             >
                                 Surprise
                             </option>
+
+                            <option
+                                value="fear"
+                                {% if selected_emotion == 'fear' %}selected{% endif %}
+                            >
+                                Fear
+                            </option>
+
+                            <option
+                                value="disgust"
+                                {% if selected_emotion == 'disgust' %}selected{% endif %}
+                            >
+                                Disgust
+                            </option>
                         </select>
                     </div>
 

@@ -76,6 +76,131 @@ The dashboard is server-rendered with Django templates, HTML, CSS, JavaScript, B
 
 ---
 
+# Commands
+
+Run every command from the repository root. Start MySQL from the XAMPP Control
+Panel and start Docker Desktop before launching the Python services. Do not run
+the legacy notebooks alongside this pipeline.
+
+## First-Time Setup
+
+Create and install the main environment:
+
+```powershell
+py -3.10 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Create and install the isolated DeepFace worker environment:
+
+```powershell
+py -3.10 -m venv .venv-worker
+.\.venv-worker\Scripts\python.exe -m pip install --upgrade pip
+.\.venv-worker\Scripts\python.exe -m pip install -r api_server\requirements-worker.txt
+```
+
+Create the local environment file and initialize the database:
+
+```powershell
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+.\.venv\Scripts\python.exe emotion_dashboard\manage.py migrate
+.\.venv\Scripts\python.exe emotion_dashboard\manage.py createsuperuser
+```
+
+After creating an active branch in Django admin, create a camera-device key.
+Replace `1` with the actual branch ID and save the generated key as
+`DEVICE_API_KEY` in `.env`:
+
+```powershell
+.\.venv\Scripts\python.exe emotion_dashboard\manage.py create_device_key --branch 1 --name front-desk-camera --pc-name LAPTOP
+```
+
+## Start the Complete System
+
+Use a separate PowerShell terminal for each long-running command.
+
+Start Redis:
+
+```powershell
+if (-not (Test-Path .compose.env)) { New-Item -ItemType File .compose.env | Out-Null }
+docker compose --env-file .compose.env up -d redis
+```
+
+Start the emotion worker:
+
+```powershell
+.\.venv-worker\Scripts\python.exe -m api_server.worker_main
+```
+
+Start FastAPI:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn api_server.face_api:app --host 127.0.0.1 --port 8001
+```
+
+Start Django:
+
+```powershell
+.\.venv\Scripts\python.exe emotion_dashboard\manage.py runserver 8000
+```
+
+Start the silent camera agent in the foreground for initial verification:
+
+```powershell
+.\.venv\Scripts\python.exe clients\device_agent.py
+```
+
+After verification, launch the camera agent without a console window:
+
+```powershell
+Start-Process -FilePath ".\.venv\Scripts\pythonw.exe" -ArgumentList "clients\device_agent.py" -WorkingDirectory (Get-Location)
+```
+
+Do not run foreground and background camera agents simultaneously.
+
+## Check System Status
+
+```powershell
+.\.venv\Scripts\python.exe scripts\check_pipeline.py
+```
+
+Open the services at:
+
+```text
+Django dashboard: http://127.0.0.1:8000/
+FastAPI health:   http://127.0.0.1:8001/health
+FastAPI docs:     http://127.0.0.1:8001/docs
+```
+
+## Pause, Resume, and Stop Capture
+
+```powershell
+.\.venv\Scripts\python.exe clients\device_agent.py --pause 30 --reason "Customer video call"
+.\.venv\Scripts\python.exe clients\device_agent.py --status
+.\.venv\Scripts\python.exe clients\device_agent.py --resume
+```
+
+Exit a tray agent from its notification-area menu. Use `Ctrl+C` to stop
+foreground services. Stop Redis without deleting its stored data:
+
+```powershell
+docker compose --env-file .compose.env stop redis
+```
+
+## Test Commands
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+$env:DATABASE_ENGINE = "sqlite"
+.\.venv\Scripts\python.exe emotion_dashboard\manage.py test monitor -v 2
+.\.venv\Scripts\python.exe emotion_dashboard\manage.py check
+.\.venv\Scripts\python.exe emotion_dashboard\manage.py makemigrations --check --dry-run
+Remove-Item Env:DATABASE_ENGINE
+```
+
+---
+
 # Non-SaaS Deployment Model
 
 One installation belongs to one organization.
@@ -511,18 +636,26 @@ surprise
 neutral
 ```
 
-The worker normalizes the probability vector before saving it.
+The worker selects the largest detected face, verifies the detected crop, and
+normalizes the probability vector before saving it. By default, it also
+averages predictions from the original and horizontally mirrored image. This
+reduces sensitivity to small pose and alignment differences, at the cost of a
+second expression inference per frame. Set `EMOTION_MIRROR_ENSEMBLE=false` if
+worker throughput is more important than this additional stability.
 
 ## Multi-Frame Consensus
 
-The agent uploads several images with the same session ID. The worker queries recent processed vectors from that device session and averages them over a short window.
+The agent uploads several images with the same session ID. The worker queries
+recent processed vectors from that device session. One or two usable vectors
+are averaged; bursts of three or more use a per-expression median so one
+confident, incorrect frame cannot dominate the final result.
 
 ```text
-Frame 1 probabilities --+
-                       |
-Frame 2 probabilities --+--> Normalized mean --> Confidence rules --> Result
-                       |
-Frame 3 probabilities --+
+Original + mirror --> Frame 1 vector --+
+                                      |
+Original + mirror --> Frame 2 vector --+--> Robust consensus --> Confidence rules --> Result
+                                      |
+Original + mirror --> Frame 3 vector --+
 ```
 
 By default, the final result becomes `uncertain` when:
@@ -815,6 +948,7 @@ EMBEDDING_MODEL=ArcFace
 MATCH_THRESHOLD=0.45
 EMOTION_DETECTOR_BACKEND=retinaface
 EMOTION_EXPAND_PERCENTAGE=10
+EMOTION_MIRROR_ENSEMBLE=true
 EMOTION_SMOOTHING_FRAMES=3
 EMOTION_SMOOTHING_WINDOW_SECONDS=4
 EMOTION_MIN_SAMPLES=2
@@ -972,6 +1106,9 @@ The first worker start downloads the RetinaFace weights, approximately 119 MB, i
 
 Keep XAMPP MySQL, Redis, Django, FastAPI, the worker, and the camera agent running.
 
+This is the only supported live-operation path. Do not run any Jupyter capture
+or processing notebook while these services are active.
+
 ## Terminal 1: Django
 
 ```powershell
@@ -1014,6 +1151,18 @@ Start-Process -FilePath ".\.venv\Scripts\pythonw.exe" -ArgumentList "clients\dev
 
 Do not run foreground and background copies at the same time.
 
+## Verify the Complete Pipeline
+
+After all four terminals are running, use a fifth terminal:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\check_pipeline.py
+```
+
+Every required component must show `OK` before relying on camera capture. The
+`Queued snapshots` line is informational; it should fall as the worker handles
+jobs. A growing count usually means `worker_main` is stopped or failing.
+
 ## Pause and Resume Controls
 
 Use the notification-area menu, or run:
@@ -1044,7 +1193,9 @@ docker compose --env-file .compose.env stop redis
 
 # Legacy Jupyter Notebooks
 
-The notebooks under `research/legacy_notebooks/` are retained for supervised research and migration work. They are not the production capture/worker path.
+The notebooks under `research/legacy_notebooks/` are archived research and
+diagnostic material. They are not part of the supported runtime pipeline and
+must not be used for routine camera capture or snapshot processing.
 
 Install the optional environment:
 
@@ -1058,11 +1209,13 @@ Current notebook roles:
 ```text
 desktop_capture.ipynb   Supervised API capture experiment
 main.ipynb              Sample-image expression analysis; no database
-process-faces.ipynb     Legacy XAMPP batch-processing experiment
+process-faces.ipynb     Archived supervised processing experiment
 prototype.ipynb         Legacy live-preview prototype
 ```
 
-`process-faces.ipynb` and `prototype.ipynb` still refer to parts of the older research schema. Their XAMPP connection is configured, but their legacy processing cells are not drop-in replacements for the current worker.
+For live operation, use `clients/device_agent.py` for capture and
+`api_server.worker_main` for processing. Never run a notebook capture loop or
+notebook processor alongside those services.
 
 Stop the tray agent before opening a notebook that accesses the camera.
 
@@ -1336,9 +1489,11 @@ The camera agent supports a tray process and console mode, but the repository do
 
 The XAMPP compatibility backend permits local use of MariaDB 10.4, but that database line is end-of-life and should not be treated as the preferred production target.
 
-## 7. Legacy Notebooks Use an Older Research Schema
+## 7. Legacy Notebooks Are Not Runtime Services
 
-Some notebook processing cells require schema migration before they can replace current application services.
+Archived notebooks may contain experimental or older code. They are not
+replacements for the camera agent, FastAPI service, Redis/RQ worker, XAMPP
+database, or Django dashboard.
 
 ---
 
