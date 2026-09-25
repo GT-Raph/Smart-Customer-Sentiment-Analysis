@@ -1559,6 +1559,98 @@ The dashboard should not be exposed through Django's development server in produ
 
 ---
 
+# Starting the Live System
+
+This is the containerized, production-oriented startup sequence. It uses the
+Gunicorn and Uvicorn entry points already built into `Dockerfile.dashboard`,
+`Dockerfile.api`, and `Dockerfile.worker`, orchestrated by `docker-compose.yml`.
+Complete the Production Deployment Checklist above before pointing this at
+real cameras or real traffic. This replaces the `runserver`/`uvicorn --reload`
+commands in [Running the System](#running-the-system), which are for local
+development only.
+
+## 1. Prepare the Host
+
+- Install Docker Engine and Docker Compose on the host that will run the dashboard, API, and worker containers.
+- Keep MariaDB running on the host itself (XAMPP or a dedicated MySQL/MariaDB install) and reachable from containers at `host.docker.internal`, which is already configured in `docker-compose.yml`. On a Linux host, confirm `host.docker.internal` resolves, or add an `extra_hosts` entry mapping it to the host gateway.
+- Put a reverse proxy (nginx, Caddy, IIS with ARR, or similar) with a TLS certificate in front of the containers. Do not expose container ports 8000/8001 directly to the internet.
+
+## 2. Configure Production Environment Variables
+
+```powershell
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+if (-not (Test-Path .compose.env)) { New-Item -ItemType File .compose.env | Out-Null }
+```
+
+Edit `.env` with real production values, matching [Production Security Configuration](#production-security-configuration): `DJANGO_DEBUG=false`, a long random `DJANGO_SECRET_KEY`, the real `DJANGO_ALLOWED_HOSTS` and `DJANGO_CSRF_TRUSTED_ORIGINS`, `DJANGO_SECURE_SSL_REDIRECT=true`, a dedicated least-privilege MariaDB account, `ENABLE_DEV_IMAGE_ENDPOINT=false`, and `DELETE_RAW_IMAGE_AFTER_PROCESSING=true` unless retention was explicitly approved. Leave `.compose.env` empty; it only stops Docker Compose from reading `.env` for variable substitution, while the containers still load `.env` directly.
+
+## 3. Build and Start the Containers
+
+```powershell
+docker compose --env-file .compose.env up -d --build
+```
+
+This starts, in dependency order: `redis`, then `dashboard` (runs `manage.py migrate`, `manage.py collectstatic`, and serves with Gunicorn on port 8000), then `api` (Uvicorn on port 8001) and `worker` once the dashboard reports healthy.
+
+## 4. Create the First Administrator, Branch, and Device Key
+
+Run these once, against the running dashboard container:
+
+```powershell
+docker compose exec dashboard python manage.py createsuperuser
+```
+
+Sign in at the dashboard URL, create an active `Branch` in Django admin, note its ID from the change-page URL, then create a device key:
+
+```powershell
+docker compose exec dashboard python manage.py create_device_key --branch <branch_id> --name front-desk-camera --pc-name <PC-NAME>
+```
+
+The generated key is displayed only once. Copy it into the camera PC's own `.env` as `DEVICE_API_KEY`.
+
+## 5. Start the Camera Agent on Each Camera PC
+
+The camera agent always runs directly on the Windows camera PC, outside Docker, pointed at the live, TLS-fronted API:
+
+```dotenv
+INGESTION_API_URL=https://<your-domain>/v1/snapshots
+DEVICE_API_KEY=<the key from step 4>
+```
+
+```powershell
+Start-Process -FilePath ".\.venv\Scripts\pythonw.exe" -ArgumentList "clients\device_agent.py" -WorkingDirectory (Get-Location)
+```
+
+## 6. Verify
+
+```powershell
+docker compose ps
+docker compose logs -f dashboard api worker
+```
+
+```text
+https://<your-domain>/                Dashboard (through the reverse proxy)
+http://<host>:8001/health             API and dependency health, checked on the host
+```
+
+Confirm every service in `docker compose ps` is healthy/running, then run the pipeline check from the camera PC or the host, adjusting the ports to match the live deployment:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\check_pipeline.py
+```
+
+## 7. Stop, Restart, or Tear Down
+
+```powershell
+docker compose --env-file .compose.env stop
+docker compose --env-file .compose.env up -d
+docker compose --env-file .compose.env down
+```
+
+`stop` and `up -d` preserve the `redis_data`, `private_uploads`, and `model_cache` named volumes. `down` removes the containers but keeps those volumes unless `-v` is added; never add `-v` unless the stored data is meant to be discarded.
+
+---
+
 # Backup and Restore
 
 Back up at minimum:
