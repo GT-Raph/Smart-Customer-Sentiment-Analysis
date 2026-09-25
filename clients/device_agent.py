@@ -9,6 +9,7 @@ camera between samples.
 from __future__ import annotations
 
 import argparse
+import enum
 import json
 import logging
 import os
@@ -188,7 +189,13 @@ def validate_config() -> None:
     LOCAL_QUEUE.mkdir(parents=True, exist_ok=True)
 
 
-def upload_image(jpeg_bytes: bytes, session_id: str) -> bool:
+class UploadOutcome(enum.Enum):
+    SENT = "sent"
+    RETRY = "retry"
+    REJECTED = "rejected"
+
+
+def upload_image(jpeg_bytes: bytes, session_id: str) -> UploadOutcome:
     response = requests.post(
         API_URL,
         headers={"X-API-Key": DEVICE_API_KEY},
@@ -197,10 +204,15 @@ def upload_image(jpeg_bytes: bytes, session_id: str) -> bool:
         timeout=REQUEST_TIMEOUT,
     )
     if response.status_code == 202:
-        return True
+        return UploadOutcome.SENT
     if response.status_code in {401, 403}:
         raise RuntimeError("The device API key was rejected")
-    return False
+    if response.status_code == 429 or response.status_code >= 500:
+        # Transient: the server is busy or unavailable. Worth retrying later.
+        return UploadOutcome.RETRY
+    # Any other 4xx means the API will never accept these exact bytes
+    # (bad format, too small, dimensions rejected, and so on).
+    return UploadOutcome.REJECTED
 
 
 def queue_locally(jpeg_bytes: bytes, session_id: str) -> None:
@@ -212,14 +224,26 @@ def queue_locally(jpeg_bytes: bytes, session_id: str) -> None:
 
 
 def flush_queue() -> None:
+    """Retry queued uploads, but never let one bad file block the rest.
+
+    A transient failure (network error, rate limit, server error) stops the
+    flush for this cycle so a struggling server isn't hammered. A permanent
+    rejection only discards that one file and keeps flushing the rest of the
+    backlog.
+    """
     for path in sorted(LOCAL_QUEUE.glob("*.jpg"), key=lambda p: p.stat().st_mtime):
+        session_id = path.name.split("__", 1)[0]
         try:
-            session_id = path.name.split("__", 1)[0]
-            if upload_image(path.read_bytes(), session_id):
-                path.unlink(missing_ok=True)
-            else:
-                break
+            outcome = upload_image(path.read_bytes(), session_id)
         except requests.RequestException:
+            break
+
+        if outcome is UploadOutcome.SENT:
+            path.unlink(missing_ok=True)
+        elif outcome is UploadOutcome.REJECTED:
+            logger.warning("Discarding a queued capture the API permanently rejected: %s", path.name)
+            path.unlink(missing_ok=True)
+        else:
             break
 
 
@@ -488,10 +512,14 @@ class DeviceAgent:
 
                 payload = jpeg.tobytes()
                 try:
-                    if not upload_image(payload, current_session_id):
-                        queue_locally(payload, current_session_id)
+                    outcome = upload_image(payload, current_session_id)
                 except requests.RequestException:
+                    outcome = UploadOutcome.RETRY
+
+                if outcome is UploadOutcome.RETRY:
                     queue_locally(payload, current_session_id)
+                elif outcome is UploadOutcome.REJECTED:
+                    logger.warning("Ingestion API permanently rejected a capture; discarding it")
 
 
 def _status_message(controller: PauseController) -> str:
