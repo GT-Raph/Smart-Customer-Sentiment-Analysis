@@ -37,4 +37,5 @@ jobs:
           DJANGO_ALLOWED_HOSTS: example.com
           DJANGO_CSRF_TRUSTED_ORIGINS: https://example.com
           DATABASE_URL: sqlite:////tmp/sentiment-ci.sqlite3
+          EMAIL_BACKEND: django.core.mail.backends.locmem.EmailBackend
         run: python manage.py check --deploy
